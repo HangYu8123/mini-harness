@@ -1,0 +1,19 @@
+# repo memory, trajectories and activation state generated for this pack itself (.harness -> harness)
+harness/repo_info/
+harness/exec_traj/
+harness/state/
+# machine-local
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
+*.log
+.DS_Store
+**/.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+node_modules/
+.idea/
+.vscode/
+*.swp

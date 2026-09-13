@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "mini-harness",
+  "description": "mini-harness — a supplementary harness layer for Claude Code and Codex.",
+  "owner": { "name": "Hang Yu", "url": "https://github.com/HangYu8123" },
+  "plugins": [
+    {
+      "name": "mini-harness",
+      "version": "0.2.0",
+      "source": "./",
+      "description": "Task tagging, advisory subagents in addition to the native flow, repo memory, and trajectories the harness learns from.",
+      "homepage": "https://github.com/HangYu8123/mini-harness",
+      "license": "MIT",
+      "keywords": ["harness", "workflow", "subagents", "memory"]
+    }
+  ]
+}

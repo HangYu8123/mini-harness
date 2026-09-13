@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mini-harness — Request Builder</title>
+<!--
+  mini-harness Request Builder — a single self-contained static page.
+  WHY: copy/pasting the request_template/*.md files needs a text editor; this lets
+  you pick a template, flip its parameters with buttons, fill the fields, and copy
+  the finished prompt in one click.
+
+  - No build, no dependencies, no network required. Double-click to open (file://),
+    or serve it (`python3 -m http.server`) from the pack root for live template sync.
+  - READ-ONLY against the pack: every parameter toggle rewrites only an in-browser
+    copy. It never writes to request_template/*.md or any file on disk.
+  - The 9 templates below are byte-exact snapshots of request_template/*.md, embedded
+    so the tool works fully offline. When served over http(s) the page re-fetches the
+    live files (request_template/<id>_request_template.md) and replaces the snapshots.
+    Source of truth stays request_template/ — if you edit those, refresh snapshots by
+    regenerating this file or just serve the page.
+-->
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --ink:#1c2127; --muted:#5b6470; --line:#e2e6ea;
+    --accent:#3b5bdb; --accent-ink:#ffffff; --chip:#eef1f6; --chip-on:#3b5bdb;
+    --code-bg:#0f1320; --code-ink:#e6e9f2; --ok:#2b8a3e; --warn:#b08900;
+    --radius:10px; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0e1116; --panel:#171b22; --ink:#e6e9ef; --muted:#9aa4b2; --line:#262c36;
+      --accent:#5c7cff; --chip:#222834; --chip-on:#5c7cff; --code-bg:#0b0e16; --code-ink:#dfe4f0;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.5;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto;padding:24px 18px 64px}
+  header.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 14px;margin-bottom:6px}
+  header.top h1{font-size:22px;margin:0;letter-spacing:.2px}
+  header.top .sub{color:var(--muted);font-size:13px}
+  .badge{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .badge.live{color:var(--ok);border-color:var(--ok)}
+  .privacy{color:var(--muted);font-size:12px;margin:2px 0 18px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media (max-width:880px){.grid{grid-template-columns:1fr}}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
+  .tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px}
+  .tab{appearance:none;border:1px solid var(--line);background:var(--chip);color:var(--ink);
+       padding:7px 12px;border-radius:999px;font-size:13px;cursor:pointer;font-family:inherit}
+  .tab[aria-selected="true"]{background:var(--chip-on);color:var(--accent-ink);border-color:var(--chip-on);font-weight:600}
+  .tab:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .ref{margin-top:12px;font-size:13px;color:var(--muted)}
+  .ref b{color:var(--ink)}
+  .ref .kw{display:block;margin-top:4px;font-family:var(--mono);font-size:11.5px;opacity:.85}
+  fieldset{border:0;margin:0 0 14px;padding:0}
+  legend{font-size:12px;color:var(--muted);padding:0;margin-bottom:6px;font-weight:600}
+  .seg{display:inline-flex;flex-wrap:wrap;gap:6px}
+  .seg label{position:relative;cursor:pointer}
+  .seg input{position:absolute;opacity:0;width:0;height:0}
+  .seg span{display:inline-block;padding:6px 12px;border:1px solid var(--line);border-radius:8px;
+            background:var(--chip);font-size:13px;font-family:var(--mono)}
+  .seg input:checked + span{background:var(--chip-on);color:var(--accent-ink);border-color:var(--chip-on);font-weight:600}
+  .seg input:focus-visible + span{outline:2px solid var(--accent);outline-offset:2px}
+  .caps{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .cap{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .cap input{width:62px;font-family:var(--mono);font-size:13px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+  .reviewrow{display:flex;flex-wrap:wrap;gap:24px;align-items:flex-start}
+  .reviewgrp{display:flex;flex-direction:column;gap:6px}
+  .analysisrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:12px;align-items:start}
+  .analysisgrp{display:flex;min-width:0;flex-direction:column;gap:6px}
+  .analysisgrp .sublegend{font-size:11px;line-height:1.35}
+  .analysisgrp .seg{flex-wrap:nowrap;gap:4px}
+  .analysisgrp .seg span{padding:5px 10px}
+  .sublegend{font-size:12px;color:var(--muted);font-weight:600}
+  .custom-model{margin-top:8px;display:none}
+  .custom-model.show{display:block}
+  .custom-model input{width:100%;font-family:var(--mono);font-size:13px;padding:7px 9px;
+        border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+  .pathbox{margin-top:6px;background:var(--code-bg);color:var(--code-ink);border-radius:8px;
+        padding:10px 12px;font-family:var(--mono);font-size:12.5px;word-break:break-all}
+  .pathbox .lbl{display:block;color:#8b94a7;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
+  .field-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .field-head label{margin-bottom:4px}
+  .browse{appearance:none;border:1px solid var(--line);background:var(--chip);color:var(--ink);
+        padding:3px 9px;border-radius:7px;font-size:11.5px;line-height:1.4;cursor:pointer;
+        font-family:inherit;font-weight:600;white-space:nowrap;margin-bottom:4px}
+  .browse:hover{border-color:var(--accent)}
+  .browse:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .hint{color:var(--muted);font-size:12px;margin:-4px 0 12px}
+  .field textarea{width:100%;min-height:42px;resize:vertical;font-family:var(--mono);font-size:13px;
+        padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+  .field textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .field.drop textarea{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,var(--bg))}
+  .field.drop{outline:2px dashed var(--accent);outline-offset:3px;border-radius:8px}
+  .preview-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+  .preview-head h2{margin:0}
+  .btns{display:flex;flex-wrap:wrap;gap:8px}
+  button.act{appearance:none;border:1px solid var(--line);background:var(--chip);color:var(--ink);
+        padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600}
+  button.act.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  button.act:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  pre.preview{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:8px;padding:14px;
+        font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;max-height:520px;overflow:auto}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);
+        background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:13px;
+        opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:9}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  footer.foot{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}
+  footer.foot code{font-family:var(--mono)}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>mini-harness · Request Builder</h1>
+    <span class="sub">Pick a task, set the dials, copy the prompt — paste it into Claude Code or Codex.</span>
+    <span id="srcBadge" class="badge" title="Where the template text comes from">bundled</span>
+  </header>
+  <p class="privacy">Runs entirely in your browser — nothing you type is sent anywhere, and the
+    <code>request_template/*.md</code> files are never modified.</p>
+
+  <div class="grid">
+    <!-- LEFT: choose + configure -->
+    <section class="panel">
+      <h2>1 · Template</h2>
+      <div id="tabs" class="tabs" role="tablist" aria-label="Request template"></div>
+      <div id="ref" class="ref"></div>
+
+      <h2 style="margin-top:18px">2 · Parameters</h2>
+      <fieldset>
+        <legend>platform <span style="font-weight:400">(sets the first line — how the skill is invoked)</span></legend>
+        <div class="seg" id="seg-platform" role="radiogroup" aria-label="platform">
+          <label><input type="radio" name="platform" value="claude" checked><span>Claude Code</span></label>
+          <label><input type="radio" name="platform" value="claude-plugin"><span>Claude Code (plugin)</span></label>
+          <label><input type="radio" name="platform" value="codex"><span>Codex</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs-reproduce" style="display:none">
+        <legend>reproduce <span style="font-weight:400">(debug only)</span></legend>
+        <div class="seg" id="seg-reproduce" role="radiogroup" aria-label="reproduce">
+          <label><input type="radio" name="reproduce" value="false" checked><span>false</span></label>
+          <label><input type="radio" name="reproduce" value="true"><span>true</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs-loopcaps" style="display:none">
+        <legend>loop caps <span style="font-weight:400">(loop only)</span></legend>
+        <div class="caps">
+          <label class="cap">max_iterations <input id="loop-maxiter" type="number" min="1" step="1" value="10"></label>
+          <label class="cap">no_progress_k <input id="loop-noprogress" type="number" min="1" step="1" value="3"></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs-loopstrategy" style="display:none">
+        <!-- Loop-only, resolved by loop_control.md §Strategy: modulates body-work
+             style only (never the caps, exit conditions, or write-guard). Default stable_advancing. -->
+        <legend>loop_strategy <span style="font-weight:400">(loop only)</span></legend>
+        <div class="seg" id="seg-loopstrategy" role="radiogroup" aria-label="loop strategy">
+          <label><input type="radio" name="loopstrategy" value="aggressive"><span>aggressive</span></label>
+          <label><input type="radio" name="loopstrategy" value="fast_iteration"><span>fast iteration</span></label>
+          <label><input type="radio" name="loopstrategy" value="stable_advancing" checked><span>stable advancing</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs-codereview" style="display:none">
+        <!-- Tri-state, resolved by harness.md §11: false = skip (default);
+             true = Claude Code's native bundled skill (/simplify, /code-review medium);
+             local = the pack's own local skill (skills/code-simplification,
+             skills/code-review-and-quality), which runs on every platform. -->
+        <legend>review skills <span style="font-weight:400">(opt-in; default off · <code>true</code> = native, <code>local</code> = pack skill)</span></legend>
+        <div class="reviewrow">
+          <div class="reviewgrp">
+            <div class="sublegend">simplify <span style="font-weight:400">(/simplify · code-simplification)</span></div>
+            <div class="seg" id="seg-simplify" role="radiogroup" aria-label="simplify">
+              <label><input type="radio" name="simplify" value="false" checked><span>false</span></label>
+              <label><input type="radio" name="simplify" value="true"><span>true</span></label>
+              <label><input type="radio" name="simplify" value="local"><span>local</span></label>
+            </div>
+          </div>
+          <div class="reviewgrp">
+            <div class="sublegend">code_review <span style="font-weight:400">(/code-review · code-review-and-quality)</span></div>
+            <div class="seg" id="seg-codereview" role="radiogroup" aria-label="code_review">
+              <label><input type="radio" name="codereview" value="false" checked><span>false</span></label>
+              <label><input type="radio" name="codereview" value="true"><span>true</span></label>
+              <label><input type="radio" name="codereview" value="local"><span>local</span></label>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs-advocacy" style="display:none">
+        <!-- Three binary gates resolved by harness.md §6:
+             applicable Diversifier / Devils Advocate / Online Researcher rows can each be
+             switched on or off. In the loop family the exit-gater Devils Advocate is a safety
+             guardrail and ignores devils_advocate. -->
+        <legend>analysis subagents</legend>
+        <div class="analysisrow">
+          <div class="analysisgrp" id="grp-diversifier">
+            <div class="sublegend">diversifier <span style="font-weight:400">(alternatives · default on)</span></div>
+            <div class="seg" id="seg-diversifier" role="radiogroup" aria-label="diversifier">
+              <label><input type="radio" name="diversifier" value="off"><span>off</span></label>
+              <label><input type="radio" name="diversifier" value="on" checked><span>on</span></label>
+            </div>
+          </div>
+          <div class="analysisgrp">
+            <div class="sublegend">devils_advocate <span style="font-weight:400">(challenge · default off)</span></div>
+            <div class="seg" id="seg-devils" role="radiogroup" aria-label="devils_advocate">
+              <label><input type="radio" name="devils" value="off" checked><span>off</span></label>
+              <label><input type="radio" name="devils" value="on"><span>on</span></label>
+            </div>
+          </div>
+          <div class="analysisgrp">
+            <div class="sublegend">online_research <span style="font-weight:400">(web research · default on)</span></div>
+            <div class="seg" id="seg-online" role="radiogroup" aria-label="online_research">
+              <label><input type="radio" name="online" value="off"><span>off</span></label>
+              <label><input type="radio" name="online" value="on" checked><span>on</span></label>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>subagent_model</legend>
+        <!-- Mirrors request_template/*.md's `inherit` default. applyParams() only rewrites the
+             header line, never the template body, so selecting another model changes the
+             effective header without rewriting the prose that describes the shipped default. -->
+        <div class="seg" id="seg-model" role="radiogroup" aria-label="subagent model">
+          <label><input type="radio" name="model" value="inherit" checked><span>inherit</span></label>
+          <label><input type="radio" name="model" value="opus"><span>opus</span></label>
+          <label><input type="radio" name="model" value="sonnet"><span>sonnet</span></label>
+          <label><input type="radio" name="model" value="haiku"><span>haiku</span></label>
+          <label><input type="radio" name="model" value="__custom__"><span>custom id…</span></label>
+        </div>
+        <div class="custom-model" id="customModelWrap">
+          <input id="customModel" type="text" placeholder="e.g. claude-opus-5 · gpt-6-astra" autocomplete="off" spellcheck="false">
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>subagent_effort</legend>
+        <!-- The subagent effort tier (inherit/low/medium/high/xhigh/max). Semantics are defined
+             by harness.md §6 ("Subagent effort"): applied
+             where the platform exposes an effort control (agent-definition `effort:`
+             frontmatter), otherwise enforced through the subagent prompt and logged as
+             prompt-enforced. `inherit` means "use the session effort" — the neutral value, the
+             effort counterpart of subagent_model's `inherit`.
+             Every request_template/*.md ships a "subagent_effort:" header line, so applyParams()
+             normally just rewrites it; the upsert in applyParams() is a fallback for live-synced
+             older templates that predate the line. Each subagent_model radio's `data-effort`
+             attribute supplies a *suggested* default only — it is applied until you pick an
+             effort yourself, after which model switches leave your choice alone (see
+             state.effortTouched). -->
+        <div class="seg" id="seg-effort" role="radiogroup" aria-label="subagent effort">
+          <label><input type="radio" name="effort" value="inherit"><span>inherit</span></label>
+          <label><input type="radio" name="effort" value="low" checked><span>low</span></label>
+          <label><input type="radio" name="effort" value="medium"><span>medium</span></label>
+          <label><input type="radio" name="effort" value="high"><span>high</span></label>
+          <label><input type="radio" name="effort" value="xhigh"><span>xhigh</span></label>
+          <label><input type="radio" name="effort" value="max"><span>max</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset id="fs-onlineeffort" style="display:none">
+        <legend>online_researcher_effort <span style="font-weight:400">(categories with Online Researcher only)</span></legend>
+        <!-- Replaces subagent_effort for the Online Researcher alone, and is honored even when
+             lower (a deliberate per-role override — see the contract's §Online Researcher
+             effort). `inherit` here falls back to subagent_effort rather than to the session. -->
+        <div class="seg" id="seg-onlineeffort" role="radiogroup" aria-label="online researcher effort">
+          <label><input type="radio" name="onlineeffort" value="inherit"><span>inherit</span></label>
+          <label><input type="radio" name="onlineeffort" value="low"><span>low</span></label>
+          <label><input type="radio" name="onlineeffort" value="medium" checked><span>medium</span></label>
+          <label><input type="radio" name="onlineeffort" value="high"><span>high</span></label>
+          <label><input type="radio" name="onlineeffort" value="xhigh"><span>xhigh</span></label>
+          <label><input type="radio" name="onlineeffort" value="max"><span>max</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <!-- Presentation-only dial for the final chat message, resolved at each workflow's last
+             step per skills/i-have-adhd (vendored):
+             on = outcome first, <= 5 visible items per group, one `Next:` action; off = the
+             workflow's plain bullet-point summary. Never affects repo_info/ logs, the run
+             record, or subagent output. Applies to every template, so it is always shown. -->
+        <legend>adhd_output <span style="font-weight:400">(final chat message shape · default on)</span></legend>
+        <div class="seg" id="seg-adhd" role="radiogroup" aria-label="adhd_output">
+          <label><input type="radio" name="adhd" value="off"><span>off</span></label>
+          <label><input type="radio" name="adhd" value="on" checked><span>on</span></label>
+        </div>
+      </fieldset>
+
+    </section>
+
+    <!-- RIGHT: fill + output -->
+    <section class="panel">
+      <h2>3 · Fill in</h2>
+      <p class="hint" id="fillHint"></p>
+      <div id="fields"></div>
+
+      <div class="preview-head" style="margin-top:18px">
+        <h2>4 · Prompt</h2>
+        <div class="btns">
+          <button class="act primary" id="btnCopy" type="button">Copy</button>
+          <button class="act" id="btnDownload" type="button">Download .md</button>
+          <button class="act" id="btnReset" type="button">Clear fields</button>
+        </div>
+      </div>
+      <pre class="preview" id="preview" aria-live="polite"></pre>
+    </section>
+  </div>
+
+  <footer class="foot">
+    mini-harness Request Builder · open by double-click, or run <code>python3 harness_gui.py</code> in the pack root for live template sync and the file picker.
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- Byte-exact snapshots of request_template/*.md (JSON.parse restores real newlines). -->
+<script type="application/json" id="hf-templates">
+{
+  "debug": "/mini-harness\ntask: debug\nreproduce: false\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nBug (what happens, expected vs actual):\n\nSuspected cause (optional):\n\nImportant files:\n",
+  "query": "/mini-harness\ntask: query\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndevils_advocate: off\nonline_research: on\nadhd_output: on\n\nQuestion:\n\nImportant files:\n",
+  "refactor": "/mini-harness\ntask: refactor\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nRefactor target and goal:\n\nImportant files:\n\nMust not change (behavior, interfaces, formats):\n",
+  "exec": "/mini-harness\ntask: exec\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nGoal (the outcome to achieve):\n\nActions (optional \u2014 derived from the goal if omitted):\n\nDone when (verifiable check):\n\nImportant files:\n",
+  "pr": "/mini-harness\ntask: pr\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nTarget branch (default: current):\n\nBase branch (default: repo default):\n\nMode (plan / execute):\n\nMax lines per PR (default 1000):\n\nStack tool (optional):\n\nNotes:\n",
+  "loop": "/mini-harness loop\ntask: loop\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndevils_advocate: off\nonline_research: on\nmax_iterations: 10\nno_progress_k: 3\nloop_strategy: stable_advancing\nsimplify: false\ncode_review: false\nadhd_output: on\n\nGoal (one concrete sentence with a term or quantity):\n\nDone when (tool-based check, e.g. \"pytest -q exits 0\"):\n\nExtra exit conditions (budget / human checkpoint, optional):\n\nLoop body (an action, or \"dispatch update|debug|exec|refactor\", optional):\n\nStarting state (optional):\n",
+  "check": "/mini-harness\ntask: check\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nadhd_output: on\n\nScope (target functionality, or \"whole repo\"):\n\nImportant files:\n\nRun scripts (yes/no):\n",
+  "init": "/mini-harness init\ntask: init\nsubagent_model: inherit\nsubagent_effort: low\nadhd_output: on\n\nRepo (default: current):\n\nFiles or docs to preserve:\n",
+  "update": "/mini-harness\ntask: update\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nRequest (what to implement or change):\n\nImportant files:\n\nConstraints or notes:\n"
+}
+</script>
+
+<script>
+"use strict";
+
+// --- Per-category metadata: display label, instructions stem, example-request keywords,
+//     debug reproduce flag, and the simplify / code_review opt-in flags (each false|true|local,
+//     see harness.md §11). Input-field boxes are NOT listed here — they are
+//     derived from each template's "<label>:" slots (see deriveFields), so the
+//     number of boxes always tracks the template (two slots -> two boxes, etc.).
+// id doubles as the instructions-file stem and the embedded-template key.
+var CATEGORIES = [
+  {id:"update", label:"Update", hasCodeReview:true, hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Implement, add, or change functionality.",
+   kw:"implement, add, create, build, update, modify, write code, new feature"},
+  {id:"debug", label:"Debug", hasReproduce:true, hasCodeReview:true, hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Fix a bug, error, crash, or failing behavior.",
+   kw:"debug, fix, error, bug, crash, broken, failing, traceback, exception"},
+  {id:"refactor", label:"Refactor", hasCodeReview:true, hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Restructure while preserving behavior.",
+   kw:"refactor, restructure, reorganize, redesign, reduce redundancy"},
+  {id:"query", label:"Query", hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Explain or answer a question about the codebase (read-only).",
+   kw:"explain, what is, how does, where is, why, describe, summarize"},
+  {id:"check", label:"Check", hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Verify, validate, or audit correctness (read-only).",
+   kw:"test, verify, check, validate, review, audit, examine"},
+  {id:"exec", label:"Exec", hasCodeReview:true, hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Execute actions toward a goal and validate the outcome.",
+   kw:"execute, run, invoke, launch, run script, achieve goal, get it working"},
+  {id:"pr", label:"PR", hasCodeReview:true, hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Break a branch into dependency-ordered stacked PRs.",
+   kw:"pull request, PR, stacked PR, break down branch, split PR"},
+  {id:"init", label:"Init",
+   desc:"Build or re-validate the repo memory (multi-agent).",
+   kw:"initialize, init, setup repo, create overview, bootstrap memory"},
+  {id:"loop", label:"Loop", hasLoopCaps:true, hasCodeReview:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+   desc:"Repeat a delegated action until a goal or exit condition is met.",
+   kw:"loop, iterate, repeat, keep going until, until, converge"}
+];
+var CAT_BY_ID = {};
+CATEGORIES.forEach(function(c){ CAT_BY_ID[c.id] = c; });
+
+// Embedded snapshots (mutable: live-sync may overwrite when served over http).
+var TEMPLATES = JSON.parse(document.getElementById("hf-templates").textContent);
+
+// UI state. Parameters are global (shared across templates); field values per category.
+// The literals below mirror each control's `checked`/`value` HTML default; seedStateFromDom()
+// (below) always re-derives every key from the live DOM before first render, so these only
+// matter for source-readability — keep them in sync with the markup rather than removing them.
+var state = {
+  cat: "update",
+  params: { "platform":"claude", "reproduce":"false", "simplify":"false", "code_review":"false", "diversifier":"on", "devils_advocate":"off", "online_research":"on", "subagent_model":"inherit", "subagent_effort":"low", "online_researcher_effort":"medium", "adhd_output":"on", "max_iterations":"10", "no_progress_k":"3", "loop_strategy":"stable_advancing" },
+  customModel: "",
+  effortTouched: false,      // set once the user picks an effort; suppresses the model radios'
+                             // data-effort defaults so an explicit choice is never overwritten
+  fieldValues: {}            // fieldValues[catId][label] = string
+};
+
+// --- Pure transforms -------------------------------------------------------
+
+// Set `key: value` in `lines` (a header's split lines): rewrite the line in place if
+// `key:` already exists, else splice it right after the first of `afterKeys` (checked
+// in order) that's present, else append it at the end.
+function upsertHeaderLine(lines, key, value, afterKeys){
+  var line = key + ": " + value;
+  var keyRe = new RegExp("^" + key + ":");
+  var idx = lines.findIndex(function(l){ return keyRe.test(l); });
+  if(idx !== -1){
+    lines[idx] = line;
+    return;
+  }
+  var afterIdx = -1;
+  for(var i = 0; i < afterKeys.length && afterIdx === -1; i++){
+    var afterRe = new RegExp("^" + afterKeys[i] + ":");
+    afterIdx = lines.findIndex(function(l){ return afterRe.test(l); });
+  }
+  if(afterIdx !== -1) lines.splice(afterIdx + 1, 0, line);
+  else lines.push(line);
+}
+
+// Rewrite ONLY the header block (the contiguous key:value lines before the first
+// blank line). The body — where `mode:` recurs and pr's `mode (plan/execute):`
+// field lives — is left untouched.
+function applyParams(text, params){
+  var sep = text.indexOf("\n\n");
+  var header = sep === -1 ? text : text.slice(0, sep);
+  var rest   = sep === -1 ? ""   : text.slice(sep);
+  var lines = header.split("\n").map(function(line){
+    var m = line.match(/^([^:]+):\s?(.*)$/);
+    if(!m) return line;
+    var key = m[1];
+    if(Object.prototype.hasOwnProperty.call(params, key)){
+      return key + ": " + params[key];
+    }
+    return line;
+  });
+  // subagent_effort: every request_template/*.md now ships this line, so the map above
+  // already rewrote it -- upsert is the fallback for live-synced older templates that
+  // predate it, splicing it right after subagent_model. This always runs against the
+  // pristine `text` (buildPrompt re-reads TEMPLATES[state.cat] fresh every call), so
+  // repeated renderPreview() calls can't accumulate duplicate lines. The anchored `^key:`
+  // regexes keep loop's dispatch_subagent_model from matching subagent_model.
+  if(Object.prototype.hasOwnProperty.call(params, "subagent_effort")){
+    upsertHeaderLine(lines, "subagent_effort", params["subagent_effort"], ["subagent_model"]);
+  }
+  // online_researcher_effort: same deal -- carried natively by every template whose family
+  // spawns an Online Researcher (all but initialize), with the splice as the fallback.
+  if(Object.prototype.hasOwnProperty.call(params, "online_researcher_effort")){
+    upsertHeaderLine(lines, "online_researcher_effort", params["online_researcher_effort"], ["subagent_effort", "subagent_model"]);
+  }
+  // adhd_output: shipped as the last header line of every template; the upsert (no anchor
+  // key, so it appends) covers live-synced templates that predate it.
+  if(Object.prototype.hasOwnProperty.call(params, "adhd_output")){
+    upsertHeaderLine(lines, "adhd_output", params["adhd_output"], []);
+  }
+  return lines.join("\n") + rest;
+}
+
+// Derive the fillable input slots straight from the template body, so the number
+// of input boxes always equals how many "<label>:" lines the template leaves blank
+// — no hand-maintained list to drift out of sync. EVERY body line that ends in a
+// colon is a fill-in slot, including the "Follow the instructions ... to <action>:"
+// recap line whose target is meant to be appended inline after the colon (e.g. code
+// has two slots: the recap line and "New functionalities descriptions:"). Each slot
+// keeps the exact pre-colon text as `key` (used to match and rewrite the line) plus
+// a trimmed-down `label` for display — the recap's boilerplate prefix is stripped so
+// the on-screen label stays short (e.g. "implement the New functionalities").
+function deriveFields(text){
+  var sep = text.indexOf("\n\n");
+  var body = sep === -1 ? text : text.slice(sep);   // drop the header (param) block
+  var out = [];
+  body.split("\n").forEach(function(line){
+    var m = line.trim().match(/^(.+?):$/);
+    if(!m) return;
+    var key = m[1];
+    var label = key.replace(/^Follow the instructions in the selected \S+ to\s+/i, "");
+    out.push({ key: key, label: label });
+  });
+  return out;
+}
+
+// Fill the derived input slots: a line that trims to exactly "<key>:" gets the
+// user's value appended inline ("<key>: <value>"). A slot left empty keeps its
+// original blank line untouched.
+function applyFields(text, fields, values){
+  var want = {};
+  fields.forEach(function(s){ want[s.key + ":"] = s.key; });
+  return text.split("\n").map(function(line){
+    var t = line.trim();
+    if(Object.prototype.hasOwnProperty.call(want, t)){
+      var key = want[t];
+      var v = ((values && values[key]) || "").trim();
+      return v ? (key + ": " + v) : line;
+    }
+    return line;
+  }).join("\n");
+}
+
+// The first template line invokes the skill. Standalone Claude Code installs expose it as
+// /mini-harness, plugin installs as /mini-harness:mini-harness, Codex as $mini-harness.
+var INVOKE = { "claude": "/mini-harness", "claude-plugin": "/mini-harness:mini-harness", "codex": "$mini-harness" };
+function applyInvocation(text, platform){
+  var token = INVOKE[platform] || INVOKE["claude"];
+  return text.replace(/^(\/mini-harness(?::mini-harness)?|\$mini-harness)(?=\s|$)/, token);
+}
+
+function buildPrompt(){
+  var cat = CAT_BY_ID[state.cat];
+  var params = effectiveParams(cat);
+  var tpl = TEMPLATES[state.cat];
+  var withParams = applyInvocation(applyParams(tpl, params), state.params["platform"]);
+  return applyFields(withParams, deriveFields(tpl), state.fieldValues[state.cat]);
+}
+
+// Only pass params whose header line exists for this category (reproduce = debug only;
+// simplify + code_review = code/debug/refactor/exec/pr/loop; loop caps = loop only).
+function effectiveParams(cat){
+  var p = {
+    // "custom id…" picked but left blank -> falls back to "inherit" specifically (not
+    // whatever pill is checked/default): inherit is the pack's documented neutral/no-override
+    // value, independent of this picker's own pre-selected default.
+    "subagent_model": state.params["subagent_model"] === "__custom__"
+        ? (state.customModel.trim() || "inherit")
+        : state.params["subagent_model"],
+    "subagent_effort": state.params["subagent_effort"],
+    "adhd_output": state.params["adhd_output"]   // every template carries it
+  };
+  if(cat.hasDiversifier) p["diversifier"] = state.params["diversifier"];
+  if(cat.hasOnlineResearcher){ p["online_researcher_effort"] = state.params["online_researcher_effort"]; p["online_research"] = state.params["online_research"]; }
+  if(cat.hasDevilsAdvocate) p["devils_advocate"] = state.params["devils_advocate"];
+  if(cat.hasReproduce) p["reproduce"] = state.params["reproduce"];
+  if(cat.hasCodeReview){ p["simplify"] = state.params["simplify"]; p["code_review"] = state.params["code_review"]; }
+  if(cat.hasLoopCaps){ p["max_iterations"] = state.params["max_iterations"]; p["no_progress_k"] = state.params["no_progress_k"]; p["loop_strategy"] = state.params["loop_strategy"]; }
+  return p;
+}
+
+// --- Rendering -------------------------------------------------------------
+
+// Tabs are static — built once; switching only moves the aria-selected flag.
+function buildTabs(){
+  var box = document.getElementById("tabs");
+  CATEGORIES.forEach(function(c){
+    var b = document.createElement("button");
+    b.className = "tab";
+    b.type = "button";
+    b.textContent = c.label;
+    b.dataset.cat = c.id;
+    b.setAttribute("role","tab");
+    b.setAttribute("aria-selected", String(c.id === state.cat));
+    b.addEventListener("click", function(){ if(state.cat===c.id) return; state.cat = c.id; renderAll(); });
+    box.appendChild(b);
+  });
+}
+
+function updateTabSelection(){
+  document.querySelectorAll("#tabs .tab").forEach(function(b){
+    b.setAttribute("aria-selected", String(b.dataset.cat === state.cat));
+  });
+}
+
+function renderRef(){
+  var cat = CAT_BY_ID[state.cat];
+  var ref = document.getElementById("ref");
+  ref.textContent = "";
+  var b = document.createElement("b");
+  b.textContent = cat.label;
+  var kw = document.createElement("span");
+  kw.className = "kw";
+  kw.textContent = "e.g. " + cat.kw;
+  ref.appendChild(b);
+  ref.appendChild(document.createTextNode(" — " + cat.desc));
+  ref.appendChild(kw);
+}
+
+function renderReproduceVisibility(){
+  document.getElementById("fs-reproduce").style.display =
+    CAT_BY_ID[state.cat].hasReproduce ? "" : "none";
+}
+
+function renderLoopCapsVisibility(){
+  var show = CAT_BY_ID[state.cat].hasLoopCaps ? "" : "none";
+  document.getElementById("fs-loopcaps").style.display = show;
+  document.getElementById("fs-loopstrategy").style.display = show;
+}
+
+function renderCodeReviewVisibility(){
+  document.getElementById("fs-codereview").style.display =
+    CAT_BY_ID[state.cat].hasCodeReview ? "" : "none";
+}
+
+function renderOnlineResearcherEffortVisibility(){
+  document.getElementById("fs-onlineeffort").style.display =
+    CAT_BY_ID[state.cat].hasOnlineResearcher ? "" : "none";
+}
+
+function renderAdvocacyVisibility(){
+  var c = CAT_BY_ID[state.cat];
+  document.getElementById("fs-advocacy").style.display =
+    (c.hasDiversifier || c.hasDevilsAdvocate || c.hasOnlineResearcher) ? "" : "none";
+  document.getElementById("grp-diversifier").style.display = c.hasDiversifier ? "" : "none";
+}
+
+function renderFields(){
+  var cat = CAT_BY_ID[state.cat];
+  var box = document.getElementById("fields");
+  box.innerHTML = "";
+  if(!state.fieldValues[cat.id]) state.fieldValues[cat.id] = {};
+  deriveFields(TEMPLATES[cat.id]).forEach(function(slot){
+    var wrap = document.createElement("div");
+    wrap.className = "field";
+    var id = "f_" + cat.id + "_" + slot.key.replace(/[^a-z0-9]+/gi,"_");
+
+    var head = document.createElement("div");
+    head.className = "field-head";
+    var lab = document.createElement("label");
+    lab.setAttribute("for", id);
+    lab.textContent = slot.label;
+    head.appendChild(lab);
+
+    var ta = document.createElement("textarea");
+    ta.id = id;
+    ta.rows = 2;
+    ta.value = state.fieldValues[cat.id][slot.key] || "";
+    var pushValue = function(){
+      state.fieldValues[cat.id][slot.key] = ta.value;
+      autosize(ta);
+      renderPreview();
+    };
+    ta.addEventListener("input", pushValue);
+
+    // "file"-ish slots (e.g. "important files:") get a native Browse button and
+    // quote-stripping paste; every field still accepts drag-and-drop of paths.
+    var isFileField = /\bfiles?\b/i.test(slot.label) || /\bfiles?\b/i.test(slot.key);
+
+    // Browse needs the Python server's /__pick__ endpoint; file:// has no backend.
+    if(isFileField && location.protocol !== "file:"){
+      var browse = document.createElement("button");
+      browse.type = "button";
+      browse.className = "browse";
+      browse.textContent = "📁 Browse…";
+      browse.title = "Open a native picker and insert the real file path(s)";
+      browse.addEventListener("click", function(){ pickFilesInto(ta, pushValue); });
+      head.appendChild(browse);
+    }
+
+    if(isFileField){
+      // Windows "Copy as path" wraps the path in quotes — drop them on paste.
+      ta.addEventListener("paste", function(e){
+        var cd = e.clipboardData || window.clipboardData;
+        if(!cd) return;
+        var s = cd.getData("text");
+        if(s && /^\s*"[^"]+"\s*$/.test(s)){
+          e.preventDefault();
+          insertAtCaret(ta, s.trim().replace(/^"|"$/g, ""));
+          pushValue();
+        }
+      });
+    }
+
+    wireDrop(wrap, ta, pushValue, isFileField);
+
+    wrap.appendChild(head);
+    wrap.appendChild(ta);
+    box.appendChild(wrap);
+    autosize(ta);
+  });
+}
+
+
+
+function renderPreview(){
+  document.getElementById("preview").textContent = buildPrompt();
+}
+
+function renderAll(){
+  updateTabSelection();
+  renderRef();
+  renderReproduceVisibility();
+  renderLoopCapsVisibility();
+  renderCodeReviewVisibility();
+  renderOnlineResearcherEffortVisibility();
+  renderAdvocacyVisibility();
+  renderFields();
+  renderPreview();
+}
+
+// --- Helpers ---------------------------------------------------------------
+
+function autosize(ta){ ta.style.height = "auto"; ta.style.height = (ta.scrollHeight + 2) + "px"; }
+
+// --- File paths: drag/drop + native picker ---------------------------------
+
+// Replace the textarea's current selection with `text`, leaving the caret after it.
+function insertAtCaret(ta, text){
+  var s = ta.selectionStart != null ? ta.selectionStart : ta.value.length;
+  var e = ta.selectionEnd   != null ? ta.selectionEnd   : ta.value.length;
+  ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
+  ta.selectionStart = ta.selectionEnd = s + text.length;
+  ta.focus();
+}
+
+// Append path(s) to a file field, comma-separating from any existing content
+// (templates read "important files: a, b, c").
+function appendPaths(ta, paths){
+  var add = paths.filter(Boolean).join(", ");
+  if(!add) return;
+  var cur = ta.value.replace(/\s+$/, "");
+  ta.value = cur ? (cur + ", " + add) : add;
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+}
+
+// Turn a file:// URI into a plain OS path; strip wrapping quotes; tidy the leading
+// slash before a Windows drive letter. Used for dragged text and text/uri-list.
+function normalizePath(s){
+  s = (s || "").trim().replace(/^"|"$/g, "");
+  if(/^file:\/\//i.test(s)){
+    try { s = decodeURIComponent(s.replace(/^file:\/\//i, "")); } catch(e){}
+    s = s.replace(/^\/([A-Za-z]:)/, "$1");          // /C:/x -> C:/x
+    if(/Windows/i.test(navigator.userAgent)) s = s.replace(/\//g, "\\");
+  }
+  return s;
+}
+
+// True full paths via the Python server's native picker (browsers won't reveal
+// the path of a dropped/chosen file, so this is the reliable route).
+async function pickFilesInto(ta, after){
+  try{
+    var res = await fetch("/__pick__?mode=files", { cache: "no-store" });
+    var data = await res.json();
+    if(data && data.paths && data.paths.length){
+      appendPaths(ta, data.paths); after();
+    } else if(data && data.error){
+      toast("Picker error: " + data.error);
+    }
+  }catch(e){
+    toast("Browse needs the server — run: python harness_gui.py");
+  }
+}
+
+// Accept dropped path text / file:// URIs (full path) or dropped files (name only).
+function wireDrop(wrap, ta, after, isFile){
+  function show(on){ wrap.classList.toggle("drop", on); }
+  ta.addEventListener("dragenter", function(e){ e.preventDefault(); show(true); });
+  ta.addEventListener("dragover",  function(e){ e.preventDefault(); show(true); });
+  ta.addEventListener("dragleave", function(){ show(false); });
+  ta.addEventListener("drop", function(e){
+    e.preventDefault(); e.stopPropagation(); show(false);
+    var dt = e.dataTransfer; if(!dt) return;
+
+    // Dragged text / file:// URIs carry the real path — prefer them.
+    var text = dt.getData("text/uri-list") || dt.getData("text/plain") || "";
+    var paths = text.split(/[\r\n]+/).map(normalizePath).filter(Boolean);
+    if(paths.length){
+      if(isFile) appendPaths(ta, paths); else insertAtCaret(ta, paths.join("\n"));
+      after(); return;
+    }
+
+    // Files dragged from the OS file manager: browsers expose only the name.
+    if(dt.files && dt.files.length){
+      var names = Array.prototype.map.call(dt.files, function(f){ return f.name; });
+      if(isFile) appendPaths(ta, names); else insertAtCaret(ta, names.join(", "));
+      after();
+      toast("Browsers hide full paths — use 📁 Browse or Windows ‘Copy as path’.");
+    }
+  });
+}
+
+// Keep a stray file dropped outside a field from navigating the page away.
+function preventStrayDrops(){
+  ["dragover","drop"].forEach(function(ev){
+    window.addEventListener(ev, function(e){
+      if(e.target && e.target.tagName === "TEXTAREA") return;  // field handlers own these
+      e.preventDefault();
+    });
+  });
+}
+
+// One-time tip under "Fill in"; wording depends on whether Browse is available.
+function renderHint(){
+  var el = document.getElementById("fillHint");
+  if(!el) return;
+  el.textContent = location.protocol === "file:"
+    ? "Tip: drag a path in, or paste one (Windows ‘Copy as path’). Run via python harness_gui.py to enable 📁 Browse."
+    : "Tip: drag a path in, or use 📁 Browse on file fields. Browsers can’t read a dragged file’s full path — Browse (or ‘Copy as path’) gives the real one.";
+}
+
+function toast(msg){
+  var t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ t.classList.remove("show"); }, 1600);
+}
+
+// Clipboard: prefer the async API only in a secure context where it actually
+// exists (it is flaky/absent on file://), else fall back to execCommand.
+async function copyText(text){
+  if(navigator.clipboard && window.isSecureContext){
+    try { await navigator.clipboard.writeText(text); return true; }
+    catch(e){ /* fall through */ }
+  }
+  var ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly","");
+  ta.style.position = "fixed";
+  ta.style.top = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  ta.setSelectionRange(0, ta.value.length);
+  var ok = false;
+  try { ok = document.execCommand("copy"); } catch(e){ ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+function downloadMd(){
+  var name = state.cat + "_request.md";
+  var blob = new Blob([buildPrompt()], { type: "text/markdown" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 0);
+}
+
+// Live-sync: only when served over http(s); file:// can't fetch siblings (opaque
+// origin), so don't even try — keep the bundled snapshots and stay silent.
+async function liveSync(){
+  if(location.protocol === "file:") return;     // file:// can't fetch siblings (opaque origin)
+  var fetched = {};
+  await Promise.all(CATEGORIES.map(async function(c){
+    try{
+      var res = await fetch("request_template/" + c.id + "_request_template.md");
+      if(res.ok){ fetched[c.id] = (await res.text()).replace(/\r\n/g, "\n"); }
+    }catch(e){ /* CORS / 404 / offline — ignore */ }
+  }));
+  // All-or-nothing: only swap in live text once every template loaded, so the
+  // store never becomes a stale live/bundled hybrid and the badge can't lie.
+  if(Object.keys(fetched).length !== CATEGORIES.length) return;
+  TEMPLATES = fetched;
+  var b = document.getElementById("srcBadge");
+  b.textContent = "live"; b.classList.add("live");
+  b.title = "Templates loaded live from request_template/";
+  renderPreview();
+}
+
+// When served by harness_gui.py, replace the generic "Request Builder" header
+// (both the H1 and the tab title) with the enclosing repo's name -> "mini-harness
+// · <repo>". Guarded like liveSync()/pickFilesInto(): file:// has no server, so
+// the static header text stays as the fallback.
+async function showRepoName(){
+  if(location.protocol === "file:") return;   // no backend to ask
+  try{
+    var res = await fetch("/__repo__", { cache: "no-store" });
+    if(!res.ok) return;
+    var data = await res.json();
+    var name = data && data.name;
+    if(!name) return;
+    var label = "mini-harness · " + name;   // U+00B7 middle dot, matching the H1
+    var h1 = document.querySelector("header.top h1");
+    if(h1) h1.textContent = label;
+    document.title = label;
+  }catch(e){ /* no server / offline — keep the static header */ }
+}
+
+// --- Wiring ----------------------------------------------------------------
+
+// Checks the named effort radio and syncs state -- called at seed time and on a model
+// pick that carries a linked default (see data-effort below). Callers must respect
+// state.effortTouched: a model's linked default is a *suggestion*, and must never
+// overwrite an effort the user picked deliberately.
+function setEffort(val){
+  var el = document.querySelector('input[name="effort"][value="' + val + '"]');
+  if(!el) return;   // val must match one of the effort radios (guards against a typo'd data-effort)
+  el.checked = true;
+  state.params["subagent_effort"] = val;
+}
+
+// Browsers can restore radio/input state across a reload — derive state from the
+// actually-checked controls so the preview always matches what's on screen.
+function seedStateFromDom(){
+  state.params["platform"] = document.querySelector('input[name="platform"]:checked').value;
+  state.params["reproduce"] = document.querySelector('input[name="reproduce"]:checked').value;
+  state.params["simplify"] = document.querySelector('input[name="simplify"]:checked').value;
+  state.params["code_review"] = document.querySelector('input[name="codereview"]:checked').value;
+  state.params["diversifier"] = document.querySelector('input[name="diversifier"]:checked').value;
+  state.params["devils_advocate"] = document.querySelector('input[name="devils"]:checked').value;
+  state.params["online_research"] = document.querySelector('input[name="online"]:checked').value;
+  state.params["adhd_output"] = document.querySelector('input[name="adhd"]:checked').value;
+  state.params["max_iterations"] = document.getElementById("loop-maxiter").value || "10";
+  state.params["no_progress_k"] = document.getElementById("loop-noprogress").value || "3";
+  state.params["loop_strategy"] = document.querySelector('input[name="loopstrategy"]:checked').value;
+  var modelEl = document.querySelector('input[name="model"]:checked');
+  state.params["subagent_model"] = modelEl.value;
+  state.customModel = document.getElementById("customModel").value;
+  document.getElementById("customModelWrap").classList.toggle("show", modelEl.value === "__custom__");
+
+  // Effort default lives on the model radio's own `data-effort` attribute (inherit /
+  // custom id carry none), rather than a separate lookup table to keep in sync. It only
+  // applies while the effort radio still sits on its markup default: a restored pick that
+  // differs from the markup is the user's own choice, so keep it and mark it touched so a
+  // later model switch does not overwrite it either.
+  var effortEl = document.querySelector('input[name="effort"]:checked');
+  if(effortEl.defaultChecked && modelEl.dataset.effort){
+    setEffort(modelEl.dataset.effort);
+  } else {
+    state.params["subagent_effort"] = effortEl.value;
+    if(!effortEl.defaultChecked) state.effortTouched = true;
+  }
+  state.params["online_researcher_effort"] = document.querySelector('input[name="onlineeffort"]:checked').value;
+}
+
+function wireParams(){
+  document.getElementById("seg-platform").addEventListener("change", function(e){
+    state.params["platform"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-reproduce").addEventListener("change", function(e){
+    state.params["reproduce"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-simplify").addEventListener("change", function(e){
+    state.params["simplify"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-codereview").addEventListener("change", function(e){
+    state.params["code_review"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-diversifier").addEventListener("change", function(e){
+    state.params["diversifier"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-devils").addEventListener("change", function(e){
+    state.params["devils_advocate"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-online").addEventListener("change", function(e){
+    state.params["online_research"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-adhd").addEventListener("change", function(e){
+    state.params["adhd_output"] = e.target.value; renderPreview();
+  });
+  document.getElementById("loop-maxiter").addEventListener("input", function(e){
+    state.params["max_iterations"] = e.target.value || "10"; renderPreview();
+  });
+  document.getElementById("loop-noprogress").addEventListener("input", function(e){
+    state.params["no_progress_k"] = e.target.value || "3"; renderPreview();
+  });
+  document.getElementById("seg-loopstrategy").addEventListener("change", function(e){
+    state.params["loop_strategy"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-model").addEventListener("change", function(e){
+    state.params["subagent_model"] = e.target.value;
+    document.getElementById("customModelWrap").classList.toggle("show", e.target.value === "__custom__");
+    if(e.target.value === "__custom__") document.getElementById("customModel").focus();
+    if(e.target.dataset.effort && !state.effortTouched) setEffort(e.target.dataset.effort);
+    renderPreview();
+  });
+  document.getElementById("customModel").addEventListener("input", function(e){
+    state.customModel = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-effort").addEventListener("change", function(e){
+    // An explicit pick wins over every model radio's linked default from here on.
+    state.effortTouched = true;
+    state.params["subagent_effort"] = e.target.value; renderPreview();
+  });
+  document.getElementById("seg-onlineeffort").addEventListener("change", function(e){
+    state.params["online_researcher_effort"] = e.target.value; renderPreview();
+  });
+}
+
+function wireButtons(){
+  document.getElementById("btnCopy").addEventListener("click", async function(){
+    var ok = await copyText(buildPrompt());
+    toast(ok ? "Copied to clipboard" : "Press Ctrl/Cmd-C to copy");
+  });
+  document.getElementById("btnDownload").addEventListener("click", downloadMd);
+  document.getElementById("btnReset").addEventListener("click", function(){
+    state.fieldValues[state.cat] = {};
+    renderFields(); renderPreview();
+    toast("Fields cleared");
+  });
+}
+
+buildTabs();
+seedStateFromDom();
+renderAll();
+renderHint();
+wireParams();
+wireButtons();
+preventStrayDrops();
+liveSync();
+showRepoName();
+</script>
+</body>
+</html>

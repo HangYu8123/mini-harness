@@ -1,0 +1,21 @@
+{
+  "name": "mini-harness",
+  "version": "0.2.0",
+  "description": "A supplementary layer over Codex: task tagging, an advisory pass (online researcher, diversifier, devil's advocate) in addition to the native flow, a repo memory the agent may consult, and per-run trajectories the harness learns from. Invoke with $mini-harness on.",
+  "author": { "name": "Hang Yu", "url": "https://github.com/HangYu8123" },
+  "homepage": "https://github.com/HangYu8123/mini-harness",
+  "repository": "https://github.com/HangYu8123/mini-harness",
+  "license": "MIT",
+  "keywords": ["harness", "workflow", "subagents", "devils-advocate", "diversifier", "memory", "trajectory"],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks-codex.json",
+  "interface": {
+    "displayName": "mini-harness",
+    "shortDescription": "Supplementary harness: task tags, advisory subagents, repo memory, trajectories.",
+    "longDescription": "mini-harness adds a task tag, an advisory pass (online researcher, diversifier, devil's advocate) that runs in addition to Codex's own flow before execution, a repo memory the agent consults on need, and per-run trajectories consolidated into what helped and what hurt. Custom worker agents (.codex/agents) are installed with install.sh.",
+    "developerName": "Hang Yu",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": ["$mini-harness on", "$mini-harness init"]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "mini-harness",
+  "interface": { "displayName": "mini-harness" },
+  "plugins": [
+    {
+      "name": "mini-harness",
+      "version": "0.2.0",
+      "description": "Task tagging, advisory subagents in addition to the native flow, repo memory, and trajectories the harness learns from.",
+      "source": { "source": "local", "path": "./" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Developer Tools"
+    }
+  ]
+}
