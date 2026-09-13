@@ -2,7 +2,7 @@
 
 **Meet MiHa, a mini-harness that lives in Claude Code and Codex in addition to the original workflow, and learns to adapt.**
 
-Install it in about two minutes, turn it on in a repo, keep working exactly as you do now. MiHa automatically identifies the task and adds a second opinion before the first edit (online researcher · diversifier · devil's advocate), a repo memory the agent opens only when it pays, and a record of what helped. It is lightweight: the advisors run in the background and wait at most a bounded budget at one boundary.
+MiHa automatically identifies the task and adds a second opinion (online researcher · diversifier · devil's advocate), a repo memory the agent opens only when it pays, and a record of what helped for future evolution. It is lightweight: the advisors run in the background and wait at most a bounded budget at one boundary.
 
 ## Install
 
