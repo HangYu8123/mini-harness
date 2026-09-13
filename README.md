@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <strong>A second opinion before the first edit &middot; repo memory opened only when it pays &middot; a record of what helped</strong><br>
+  <strong>A second opinion before the first edit &middot; repo memory opened only when it pays &middot; a record of what helped, for future evolution</strong><br>
   <sub>MiHa (mini-harness) is a supplementary layer built only from Claude Code's and Codex's native extension points: skills, subagents, hooks, plugins, and memory files. No runtime, no daemon. Off until you say <code>on</code>. Advisors run in the background and wait at most a bounded budget at one boundary.</sub>
 </p>
 
