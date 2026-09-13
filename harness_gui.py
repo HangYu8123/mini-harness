@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Launch the mini-harness Request Builder GUI.
 
-One command, no install, no dependencies:
+The Request Builder (``harness_gui.html``) is how a user writes a mini-harness
+prompt without typing the dials: pick the platform, the task tab, flip the dials,
+fill the fields, copy the finished request into Claude Code or Codex. This script
+is its launcher and local server. One command, no install, no dependencies:
 
     python3 harness_gui.py
 

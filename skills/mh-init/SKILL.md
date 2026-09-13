@@ -2,35 +2,37 @@
 name: mh-init
 description: mini-harness · initialize or re-initialize a repo's memory under .harness/repo_info/ with a multi-agent pass — three-perspective codebase overview, ranked scripts map, issue scan, git-seeded update log — validated by an isolated verifier; workers' model and effort are selectable per run. Re-runs validate and diff-update existing memory instead of regenerating. Use only when the user invokes it (/mh-init · $mh-init · /mini-harness init).
 disable-model-invocation: true
-argument-hint: "[repo: path] [preserve: files or docs] [subagent_model: <id|inherit>] [subagent_effort: <inherit|low|medium|high|xhigh|max>]"
+argument-hint: "[repo: path] [preserve: files or docs] [subagent_model: <id|inherit> — default claude-sonnet-4-6 (Claude Code) · gpt-5.6-luna (Codex)] [subagent_effort: <inherit|low|medium|high|xhigh|max> — default max]"
 ---
 # mh-init — build the repo's memory *(lineage: HarnessFlow general `initialize.instructions.md`, deliberately the thorough variant)*
 
 Read `.harness/harness.md` once per session (pack root: `harness/harness.md`), `.harness/repo_map.md`, and — when memory already exists — `.harness/reinitialize.md`. Documentation only: no source changes. One todo per stage.
 
 ## Contract
-- **Inputs:** target repo (default: current) · files or docs to preserve (optional) · **worker dials** `subagent_model:` and `subagent_effort:` (harness.md §6: the model goes through the platform's spawn parameter where one exists; the effort goes into every worker prompt as `effort: <level> — binding budget`; absent → the definitions' defaults).
+- **Inputs:** target repo (default: current) · files/docs to preserve · worker dials `subagent_model:` / `subagent_effort:`. Absent dials use `claude-sonnet-4-6` (Claude Code) or `gpt-5.6-luna` (Codex), effort `max`; explicit `inherit` uses the session setting. Applied with the effort control (`mh.sh effort`, `worker_models.md`), recording requested/effective settings.
 - **Produces:** [file structure] → [codebase_overview 1|2|3] → [codebase_overview] + [pipeline] → [symbol inventory] + [scripts overview draft] → `scripts_overview.md` → [verification] → [issues report] → `known_issues.md` §Auto-generated → `update_logs.md` seed → trajectory.
-- **Done when:** both overviews are written within budget, consistent with each other and with the code (verified by the isolated verifier), and every memory file plus `repo_info/README.md` exists.
+- **Done when:** both overviews are written within budget, consistent with each other and with the code (verified by the isolated verifier), every memory file plus `repo_info/README.md` exists, and every file in [file structure] appears in at least one analyst's read list.
 
 ## Stages
 
 ### 1 · Setup · scan
+Infer `task: init` internally. Initialization and re-initialization skip the advisory pass entirely, regardless of advisor dials. Keep the analysis and verification workers below.
 Confirm the entry points exist (`AGENTS.md` carrying the mini-harness block, `CLAUDE.md` importing it); if not, say to run `install.sh` and continue. Scan the whole repo (skip `.git/`, dependency and build dirs) → **[file structure]**, validated for completeness. Ensure `.harness/repo_info/` holds — creating empty ones — `README.md` (copy of `repo_info_README.md`), `preference.md`, `known_issues.md`, `persistent_issues.md`, `update_logs.md`, `past_QA.md`, `codebase_overview.md`, `scripts_overview.md`, `harness_effect.md`, and that `.harness/exec_traj/` exists. Determine **[init mode]** per overview (`reinitialize.md` §Mode detection); keep any existing overview and its [pipeline] in context.
+**Worker settings.** Resolve the dials (Contract), then run `bash "${CLAUDE_SKILL_DIR}/../mini-harness/mh.sh" status`. If its `effective` line already shows the resolved model and effort, the definitions were set before this session: spawn every worker by type with no model parameter. Otherwise run `… mh.sh effort <effort> claude-model=<id>` (Codex: `codex-model=<id>`; `inherit` keeps the session model) and stop here — definitions are read at session start (`worker_models.md`), so report in one line that they now carry the settings, `Next:` start a new session and run `/mini-harness init` again. Never put an effort level in a prompt as a stand-in, never silently fall back to another model, and record requested/effective settings with launch evidence per `exec_traj.md`.
 
-### 2 · Codebase overview  `[PARALLEL]` — three perspectives
-Spawn all three on [file structure] (+ the existing overview in re-initialize mode, to validate per `reinitialize.md`), each with the worker dials:
+### 2 · Codebase overview  `[PARALLEL]` — three whole-repo perspectives
+Spawn all three on [file structure] as an explicit read list — every file, no narrowing (+ the existing overview in re-initialize mode, to validate per `reinitialize.md`), each with the worker dials and told to return its read list:
 | Spawn | Mode | Task |
 |---|---|---|
-| **broad-analyst** | order | Read every file folder by folder — what each is, does, and depends on → **[codebase_overview 1]** + [read file list 1]. |
-| **free-analyst** | expand | Start at the main entry point(s), follow imports transitively until every file is read → **[codebase_overview 2]** + [read file list 2]. |
-| **focus-analyst** | free | Choose its own order; each file's role and position in the pipeline → **[codebase_overview 3]** + [read file list 3]. |
-Reconcile the three read lists against [file structure]; read any extra files yourself and add them. Merge the drafts — keep what is correct and non-redundant — into **[codebase_overview]**; draft or update **[pipeline]** as a diagram whose every block names its scripts. Write `codebase_overview.md` (brief overview · purpose · layout · components and dependency map · the pipeline) within budget. Re-initialize mode: apply the [validation & diff report] as targeted edits, never blank-and-rewrite; re-infer purpose from `update_logs.md`.
+| **broad-analyst** | `order` | Read every file folder by folder — what each is, does, and depends on → **[codebase_overview 1]** + [read file list 1]. |
+| **broad-analyst** | `expand` | Start at the main entry point(s), follow imports and the pipeline upstream → downstream until every file is read → **[codebase_overview 2]** + [read file list 2]. |
+| **free-analyst** | free | Choose its own order and strategy, still covering every file; each file's role and position in the pipeline → **[codebase_overview 3]** + [read file list 3]. |
+(`focus-analyst` is deliberately not used here: its definition narrows to the most relevant files, which is the opposite of coverage.) Reconcile the three read lists against [file structure]; read any missed files yourself and add them, noting the gap in the trajectory. Merge the drafts — keep what is correct and non-redundant — into **[codebase_overview]**; draft or update **[pipeline]** as a diagram whose every block names its scripts. Write `codebase_overview.md` (brief overview · purpose · layout · components and dependency map · the pipeline) within budget. Re-initialize mode: apply the [validation & diff report] as targeted edits, never blank-and-rewrite; re-infer purpose from `update_logs.md`.
 
 ### 3 · Scripts overview  `[PARALLEL]` — ranked repo map
 | Spawn | Task |
 |---|---|
-| **focus-analyst** | [file structure] + `repo_map.md`: per-file definitions and references with the best available extractor (never install tooling) → **[symbol inventory]**. |
+| **executor** | [file structure] + `repo_map.md`: per-file definitions and references with the best available extractor already on the machine (`ctags`, `grep -n`, the language's own tooling — never install anything), every code file covered → **[symbol inventory]**. |
 | **broad-analyst** | [file structure] + [pipeline] + `codebase_overview.md`: read upstream → downstream; per code file one summary line, key signatures, one dependency note → **[scripts overview draft]**. |
 Rank by reference-graph centrality, merge the summaries onto the ranked order, bisect to the budget (below-cut files get one index line), write `scripts_overview.md`. Re-initialize mode: diff-update per `reinitialize.md`.
 
@@ -48,11 +50,12 @@ Combine with your own reading into a fair, evidence-backed **[issues report]** (
 If `update_logs.md` is empty, seed it from the last 20 commits, newest first, in the one-line format: `- <YYYY-MM-DD> · git · <commit subject> · files: <changed files> · functions: —`. Never rewrite existing lines. Leave `preference.md`, `persistent_issues.md`, `past_QA.md`, `harness_effect.md` untouched.
 
 ### 7 · Report
-Write the trajectory (`exec_traj.md`; `advisory: skipped — init`; memory line = `fresh` or the validation counts per overview; harness effect = which analysts' drafts survived the merge). Final message in the i-have-adhd shape: what was written, budgets used, `Next:` = open `codebase_overview.md`; status line `mini-harness · task init · advisors skipped · recorded <files> · traj <n>`.
+Run `mh.sh effort reset` unless the user asked to keep the init settings for later runs (either takes effect in the next session). Write the trajectory (fill the skeleton `mh.sh traj init` writes; `advisory: skipped — initialization has no advisory pass`; memory line = `fresh` or the validation counts per overview; harness effect = which analysts' drafts survived the merge). Final message in the i-have-adhd shape: what was written, budgets used, `Next:` = open `codebase_overview.md`. Keep operational status in the record; no routine task tag or footer. Complete automatic recording and wiki cadence per harness.md §8.
 
 ## Red flags
 | You are thinking… | Do instead |
 |---|---|
 | "One analyst read everything, skip the other two." | Three perspectives is the point of this variant. |
+| "The focus analyst is cheaper for the third pass." | It narrows by definition; coverage needs broad or free. |
 | "The old overview is probably still right." | Re-derive each claim against the code — that is re-initialization. |
 | "Over budget, but the detail is valuable." | The code holds the detail; cut the lowest-ranked entries. |

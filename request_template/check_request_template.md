@@ -3,9 +3,9 @@ task: check
 subagent_model: inherit
 subagent_effort: low
 online_researcher_effort: medium
-diversifier: on
-devils_advocate: off
-online_research: on
+diversifier: auto
+devils_advocate: auto
+online_research: auto
 adhd_output: on
 
 Scope (target functionality, or "whole repo"):

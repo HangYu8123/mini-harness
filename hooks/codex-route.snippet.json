@@ -1,10 +1,26 @@
 {
   "hooks": {
     "SessionStart": [
-      { "hooks": [ { "type": "command", "command": ".harness/hooks/route.sh", "timeout": 5 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$PWD; while :; do if [ -x \"$d/.harness/hooks/route.sh\" ]; then exec \"$d/.harness/hooks/route.sh\"; fi; [ \"$d\" = / ] && exit 0; d=$(dirname \"$d\"); done",
+            "timeout": 5
+          }
+        ]
+      }
     ],
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": ".harness/hooks/route.sh", "timeout": 5 } ] }
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$PWD; while :; do if [ -x \"$d/.harness/hooks/route.sh\" ]; then exec \"$d/.harness/hooks/route.sh\"; fi; [ \"$d\" = / ] && exit 0; d=$(dirname \"$d\"); done",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

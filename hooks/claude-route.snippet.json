@@ -2,10 +2,10 @@
   "hooks": {
     "SessionStart": [
       { "matcher": "startup|resume|clear|compact",
-        "hooks": [ { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh", "timeout": 5, "statusMessage": "mini-harness" } ] }
+        "hooks": [ { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh\"", "timeout": 5, "statusMessage": "mini-harness" } ] }
     ],
     "UserPromptSubmit": [
-      { "hooks": [ { "type": "command", "command": "${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh", "timeout": 5 } ] }
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh\"", "timeout": 5 } ] }
     ]
   }
 }

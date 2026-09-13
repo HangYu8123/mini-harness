@@ -11,7 +11,8 @@
   the finished prompt in one click.
 
   - No build, no dependencies, no network required. Double-click to open (file://),
-    or serve it (`python3 -m http.server`) from the pack root for live template sync.
+    or run `python3 harness_gui.py` from the pack root: it serves this page, live-syncs
+    the templates, and adds the native "Browse" file picker (see that script's docstring).
   - READ-ONLY against the pack: every parameter toggle rewrites only an in-browser
     copy. It never writes to request_template/*.md or any file on disk.
   - The 9 templates below are byte-exact snapshots of request_template/*.md, embedded
@@ -161,7 +162,7 @@
       <fieldset id="fs-loopstrategy" style="display:none">
         <!-- Loop-only, resolved by loop_control.md §Strategy: modulates body-work
              style only (never the caps, exit conditions, or write-guard). Default stable_advancing. -->
-        <legend>loop_strategy <span style="font-weight:400">(loop only)</span></legend>
+        <legend>strategy <span style="font-weight:400">(loop only — the `strategy:` header mh-loop copies verbatim)</span></legend>
         <div class="seg" id="seg-loopstrategy" role="radiogroup" aria-label="loop strategy">
           <label><input type="radio" name="loopstrategy" value="aggressive"><span>aggressive</span></label>
           <label><input type="radio" name="loopstrategy" value="fast_iteration"><span>fast iteration</span></label>
@@ -196,31 +197,35 @@
       </fieldset>
 
       <fieldset id="fs-advocacy" style="display:none">
-        <!-- Three binary gates resolved by harness.md §6:
-             applicable Diversifier / Devils Advocate / Online Researcher rows can each be
-             switched on or off. In the loop family the exit-gater Devils Advocate is a safety
-             guardrail and ignores devils_advocate. -->
+        <!-- Three-way dials resolved by harness.md §5: `auto` (default) applies the size gate —
+             a small request that only concerns this repo spawns no advisor, a small request that
+             hinges on an external fact spawns the online researcher only, anything else all three;
+             `on` / `off` force. In the loop family the exit-gater Devils Advocate is loop control
+             and ignores devils_advocate. -->
         <legend>analysis subagents</legend>
         <div class="analysisrow">
           <div class="analysisgrp" id="grp-diversifier">
-            <div class="sublegend">diversifier <span style="font-weight:400">(alternatives · default on)</span></div>
+            <div class="sublegend">diversifier <span style="font-weight:400">(alternatives · default auto)</span></div>
             <div class="seg" id="seg-diversifier" role="radiogroup" aria-label="diversifier">
               <label><input type="radio" name="diversifier" value="off"><span>off</span></label>
-              <label><input type="radio" name="diversifier" value="on" checked><span>on</span></label>
+              <label><input type="radio" name="diversifier" value="auto" checked><span>auto</span></label>
+              <label><input type="radio" name="diversifier" value="on"><span>on</span></label>
             </div>
           </div>
           <div class="analysisgrp">
-            <div class="sublegend">devils_advocate <span style="font-weight:400">(challenge · default off)</span></div>
+            <div class="sublegend">devils_advocate <span style="font-weight:400">(challenge · default auto)</span></div>
             <div class="seg" id="seg-devils" role="radiogroup" aria-label="devils_advocate">
-              <label><input type="radio" name="devils" value="off" checked><span>off</span></label>
+              <label><input type="radio" name="devils" value="off"><span>off</span></label>
+              <label><input type="radio" name="devils" value="auto" checked><span>auto</span></label>
               <label><input type="radio" name="devils" value="on"><span>on</span></label>
             </div>
           </div>
           <div class="analysisgrp">
-            <div class="sublegend">online_research <span style="font-weight:400">(web research · default on)</span></div>
+            <div class="sublegend">online_research <span style="font-weight:400">(web research · default auto)</span></div>
             <div class="seg" id="seg-online" role="radiogroup" aria-label="online_research">
               <label><input type="radio" name="online" value="off"><span>off</span></label>
-              <label><input type="radio" name="online" value="on" checked><span>on</span></label>
+              <label><input type="radio" name="online" value="auto" checked><span>auto</span></label>
+              <label><input type="radio" name="online" value="on"><span>on</span></label>
             </div>
           </div>
         </div>
@@ -230,14 +235,28 @@
         <legend>subagent_model</legend>
         <!-- Mirrors request_template/*.md's `inherit` default. applyParams() only rewrites the
              header line, never the template body, so selecting another model changes the
-             effective header without rewriting the prose that describes the shipped default. -->
+             effective header without rewriting the prose that describes the shipped default.
+             Pills are platform-scoped: .claude-only (aliases opus / sonnet / haiku / fable plus
+             full Claude ids) and .codex-only (GPT ids) — renderModelOptions() shows the active
+             platform's set and drops a hidden pick back to `inherit`. Anything else: custom id. -->
         <div class="seg" id="seg-model" role="radiogroup" aria-label="subagent model">
           <label><input type="radio" name="model" value="inherit" checked><span>inherit</span></label>
-          <label><input type="radio" name="model" value="opus"><span>opus</span></label>
-          <label><input type="radio" name="model" value="sonnet"><span>sonnet</span></label>
-          <label><input type="radio" name="model" value="haiku"><span>haiku</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="opus"><span>opus</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="sonnet"><span>sonnet</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="haiku"><span>haiku</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="fable"><span>fable</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="claude-opus-5"><span>claude-opus-5</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="claude-sonnet-5"><span>claude-sonnet-5</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="claude-fable-5-1"><span>claude-fable-5-1</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="claude-sonnet-4-6"><span>claude-sonnet-4-6</span></label>
+          <label class="claude-only"><input type="radio" name="model" value="claude-haiku-4-5"><span>claude-haiku-4-5</span></label>
+          <label class="codex-only"><input type="radio" name="model" value="gpt-6-astra"><span>gpt-6-astra</span></label>
+          <label class="codex-only"><input type="radio" name="model" value="gpt-5.6-sol"><span>gpt-5.6-sol</span></label>
+          <label class="codex-only"><input type="radio" name="model" value="gpt-5.6-luna"><span>gpt-5.6-luna</span></label>
           <label><input type="radio" name="model" value="__custom__"><span>custom id…</span></label>
         </div>
+        <div id="modelNote" style="font-size:.85em;opacity:.8;margin-top:.35em"></div>
+        <p class="hint" id="initModelHint" style="display:none">Init: <code>inherit</code> and an unpicked effort resolve to the init defaults — Claude Code <code>claude-sonnet-4-6</code> · Codex <code>gpt-5.6-luna</code> · effort <code>max</code>. Pick a model or effort to override; type <code>inherit</code> as a custom id for the session model.</p>
         <div class="custom-model" id="customModelWrap">
           <input id="customModel" type="text" placeholder="e.g. claude-opus-5 · gpt-6-astra" autocomplete="off" spellcheck="false">
         </div>
@@ -325,15 +344,15 @@
 <!-- Byte-exact snapshots of request_template/*.md (JSON.parse restores real newlines). -->
 <script type="application/json" id="hf-templates">
 {
-  "debug": "/mini-harness\ntask: debug\nreproduce: false\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nBug (what happens, expected vs actual):\n\nSuspected cause (optional):\n\nImportant files:\n",
-  "query": "/mini-harness\ntask: query\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndevils_advocate: off\nonline_research: on\nadhd_output: on\n\nQuestion:\n\nImportant files:\n",
-  "refactor": "/mini-harness\ntask: refactor\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nRefactor target and goal:\n\nImportant files:\n\nMust not change (behavior, interfaces, formats):\n",
-  "exec": "/mini-harness\ntask: exec\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nGoal (the outcome to achieve):\n\nActions (optional \u2014 derived from the goal if omitted):\n\nDone when (verifiable check):\n\nImportant files:\n",
-  "pr": "/mini-harness\ntask: pr\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nTarget branch (default: current):\n\nBase branch (default: repo default):\n\nMode (plan / execute):\n\nMax lines per PR (default 1000):\n\nStack tool (optional):\n\nNotes:\n",
-  "loop": "/mini-harness loop\ntask: loop\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndevils_advocate: off\nonline_research: on\nmax_iterations: 10\nno_progress_k: 3\nloop_strategy: stable_advancing\nsimplify: false\ncode_review: false\nadhd_output: on\n\nGoal (one concrete sentence with a term or quantity):\n\nDone when (tool-based check, e.g. \"pytest -q exits 0\"):\n\nExtra exit conditions (budget / human checkpoint, optional):\n\nLoop body (an action, or \"dispatch update|debug|exec|refactor\", optional):\n\nStarting state (optional):\n",
-  "check": "/mini-harness\ntask: check\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nadhd_output: on\n\nScope (target functionality, or \"whole repo\"):\n\nImportant files:\n\nRun scripts (yes/no):\n",
-  "init": "/mini-harness init\ntask: init\nsubagent_model: inherit\nsubagent_effort: low\nadhd_output: on\n\nRepo (default: current):\n\nFiles or docs to preserve:\n",
-  "update": "/mini-harness\ntask: update\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: on\ndevils_advocate: off\nonline_research: on\nsimplify: false\ncode_review: false\nadhd_output: on\n\nRequest (what to implement or change):\n\nImportant files:\n\nConstraints or notes:\n"
+  "debug": "/mini-harness\ntask: debug\nreproduce: false\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: auto\ndevils_advocate: auto\nonline_research: auto\nsimplify: false\ncode_review: false\nadhd_output: on\n\nBug (what happens, expected vs actual):\n\nSuspected cause (optional):\n\nImportant files:\n",
+  "query": "/mini-harness\ntask: query\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndevils_advocate: auto\nonline_research: auto\ndiversifier: auto\nadhd_output: on\n\nQuestion:\n\nImportant files:\n",
+  "refactor": "/mini-harness\ntask: refactor\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: auto\ndevils_advocate: auto\nonline_research: auto\nsimplify: false\ncode_review: false\nadhd_output: on\n\nRefactor target and goal:\n\nImportant files:\n\nMust not change (behavior, interfaces, formats):\n",
+  "exec": "/mini-harness\ntask: exec\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: auto\ndevils_advocate: auto\nonline_research: auto\nsimplify: false\ncode_review: false\nadhd_output: on\n\nGoal (the outcome to achieve):\n\nActions (optional \u2014 derived from the goal if omitted):\n\nDone when (verifiable check):\n\nImportant files:\n",
+  "pr": "/mini-harness\ntask: pr\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: auto\ndevils_advocate: auto\nonline_research: auto\nsimplify: false\ncode_review: false\nadhd_output: on\n\nTarget branch (default: current):\n\nBase branch (default: repo default):\n\nMode (plan / execute):\n\nMax lines per PR (default 1000):\n\nStack tool (optional):\n\nNotes:\n",
+  "loop": "/mini-harness loop\ntask: loop\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndevils_advocate: auto\nonline_research: auto\nmax_iterations: 10\nno_progress_k: 3\nstrategy: stable_advancing\nsimplify: false\ncode_review: false\ndiversifier: auto\nadhd_output: on\n\nGoal (one concrete sentence with a term or quantity):\n\nDone when (tool-based check, e.g. \"pytest -q exits 0\"):\n\nExtra exit conditions (budget / human checkpoint, optional):\n\nLoop body (an action, or \"dispatch update|debug|exec|refactor\", optional):\n\nStarting state (optional):\n",
+  "check": "/mini-harness\ntask: check\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: auto\ndevils_advocate: auto\nonline_research: auto\nadhd_output: on\n\nScope (target functionality, or \"whole repo\"):\n\nImportant files:\n\nRun scripts (yes/no):\n",
+  "init": "/mini-harness init\ntask: init\nsubagent_model: claude-sonnet-4-6\nsubagent_effort: max\nadhd_output: on\n\nRepo (default: current):\n\nFiles or docs to preserve:\n",
+  "update": "/mini-harness\ntask: update\nsubagent_model: inherit\nsubagent_effort: low\nonline_researcher_effort: medium\ndiversifier: auto\ndevils_advocate: auto\nonline_research: auto\nsimplify: false\ncode_review: false\nadhd_output: on\n\nRequest (what to implement or change):\n\nImportant files:\n\nConstraints or notes:\n"
 }
 </script>
 
@@ -356,7 +375,7 @@ var CATEGORIES = [
   {id:"refactor", label:"Refactor", hasCodeReview:true, hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
    desc:"Restructure while preserving behavior.",
    kw:"refactor, restructure, reorganize, redesign, reduce redundancy"},
-  {id:"query", label:"Query", hasOnlineResearcher:true, hasDevilsAdvocate:true,
+  {id:"query", label:"Query", hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
    desc:"Explain or answer a question about the codebase (read-only).",
    kw:"explain, what is, how does, where is, why, describe, summarize"},
   {id:"check", label:"Check", hasDiversifier:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
@@ -369,9 +388,12 @@ var CATEGORIES = [
    desc:"Break a branch into dependency-ordered stacked PRs.",
    kw:"pull request, PR, stacked PR, break down branch, split PR"},
   {id:"init", label:"Init",
-   desc:"Build or re-validate the repo memory (multi-agent).",
+   // Init-only worker defaults (mh-init Contract): emitted while the model radio sits on
+   // `inherit` and no effort was picked; keyed by the platform family of the switch above.
+   initDefaults:{claude:{model:"claude-sonnet-4-6", effort:"max"}, codex:{model:"gpt-5.6-luna", effort:"max"}},
+   desc:"Build or re-validate the repo memory (multi-agent; workers default to Sonnet 4.6 / GPT-5.6 Luna at effort max).",
    kw:"initialize, init, setup repo, create overview, bootstrap memory"},
-  {id:"loop", label:"Loop", hasLoopCaps:true, hasCodeReview:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
+  {id:"loop", label:"Loop", hasDiversifier:true, hasLoopCaps:true, hasCodeReview:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
    desc:"Repeat a delegated action until a goal or exit condition is met.",
    kw:"loop, iterate, repeat, keep going until, until, converge"}
 ];
@@ -387,7 +409,7 @@ var TEMPLATES = JSON.parse(document.getElementById("hf-templates").textContent);
 // matter for source-readability — keep them in sync with the markup rather than removing them.
 var state = {
   cat: "update",
-  params: { "platform":"claude", "reproduce":"false", "simplify":"false", "code_review":"false", "diversifier":"on", "devils_advocate":"off", "online_research":"on", "subagent_model":"inherit", "subagent_effort":"low", "online_researcher_effort":"medium", "adhd_output":"on", "max_iterations":"10", "no_progress_k":"3", "loop_strategy":"stable_advancing" },
+  params: { "platform":"claude", "reproduce":"false", "simplify":"false", "code_review":"false", "diversifier":"auto", "devils_advocate":"auto", "online_research":"auto", "subagent_model":"inherit", "subagent_effort":"low", "online_researcher_effort":"medium", "adhd_output":"on", "max_iterations":"10", "no_progress_k":"3", "strategy":"stable_advancing" },
   customModel: "",
   effortTouched: false,      // set once the user picks an effort; suppresses the model radios'
                              // data-effort defaults so an explicit choice is never overwritten
@@ -523,12 +545,17 @@ function effectiveParams(cat){
     "subagent_effort": state.params["subagent_effort"],
     "adhd_output": state.params["adhd_output"]   // every template carries it
   };
+  if(cat.initDefaults){
+    var d = cat.initDefaults[state.params["platform"] === "codex" ? "codex" : "claude"];
+    if(state.params["subagent_model"] === "inherit") p["subagent_model"] = d.model;
+    if(!state.effortTouched) p["subagent_effort"] = d.effort;
+  }
   if(cat.hasDiversifier) p["diversifier"] = state.params["diversifier"];
   if(cat.hasOnlineResearcher){ p["online_researcher_effort"] = state.params["online_researcher_effort"]; p["online_research"] = state.params["online_research"]; }
   if(cat.hasDevilsAdvocate) p["devils_advocate"] = state.params["devils_advocate"];
   if(cat.hasReproduce) p["reproduce"] = state.params["reproduce"];
   if(cat.hasCodeReview){ p["simplify"] = state.params["simplify"]; p["code_review"] = state.params["code_review"]; }
-  if(cat.hasLoopCaps){ p["max_iterations"] = state.params["max_iterations"]; p["no_progress_k"] = state.params["no_progress_k"]; p["loop_strategy"] = state.params["loop_strategy"]; }
+  if(cat.hasLoopCaps){ p["max_iterations"] = state.params["max_iterations"]; p["no_progress_k"] = state.params["no_progress_k"]; p["strategy"] = state.params["strategy"]; }
   return p;
 }
 
@@ -570,6 +597,24 @@ function renderRef(){
   ref.appendChild(kw);
 }
 
+// Platform-specific model options (validation F12): each platform shows only its own pills;
+// a pick that belongs to the other platform falls back to `inherit` on switch.
+function renderModelOptions(){
+  var codex = state.params["platform"] === "codex";
+  document.querySelectorAll("#seg-model .claude-only").forEach(function(l){ l.style.display = codex ? "none" : ""; });
+  document.querySelectorAll("#seg-model .codex-only").forEach(function(l){ l.style.display = codex ? "" : "none"; });
+  var picked = document.querySelector('input[name="model"]:checked');
+  if(picked && picked.parentElement.style.display === "none"){
+    state.params["subagent_model"] = "inherit";
+    document.querySelector('input[name="model"][value="inherit"]').checked = true;
+  }
+  var note = document.getElementById("modelNote");
+  note.textContent = codex
+    ? "Presets checked against official Codex docs (2026-09-12). Access depends on your account; custom IDs are checked at launch."
+    : "Claude supports aliases and full IDs. Access depends on your account; custom IDs are checked at launch.";
+  note.style.display = "";
+}
+
 function renderReproduceVisibility(){
   document.getElementById("fs-reproduce").style.display =
     CAT_BY_ID[state.cat].hasReproduce ? "" : "none";
@@ -589,6 +634,11 @@ function renderCodeReviewVisibility(){
 function renderOnlineResearcherEffortVisibility(){
   document.getElementById("fs-onlineeffort").style.display =
     CAT_BY_ID[state.cat].hasOnlineResearcher ? "" : "none";
+}
+
+function renderInitHintVisibility(){
+  document.getElementById("initModelHint").style.display =
+    CAT_BY_ID[state.cat].initDefaults ? "" : "none";
 }
 
 function renderAdvocacyVisibility(){
@@ -671,6 +721,7 @@ function renderPreview(){
 }
 
 function renderAll(){
+  renderModelOptions();
   updateTabSelection();
   renderRef();
   renderReproduceVisibility();
@@ -678,6 +729,7 @@ function renderAll(){
   renderCodeReviewVisibility();
   renderOnlineResearcherEffortVisibility();
   renderAdvocacyVisibility();
+  renderInitHintVisibility();
   renderFields();
   renderPreview();
 }
@@ -887,7 +939,7 @@ function seedStateFromDom(){
   state.params["adhd_output"] = document.querySelector('input[name="adhd"]:checked').value;
   state.params["max_iterations"] = document.getElementById("loop-maxiter").value || "10";
   state.params["no_progress_k"] = document.getElementById("loop-noprogress").value || "3";
-  state.params["loop_strategy"] = document.querySelector('input[name="loopstrategy"]:checked').value;
+  state.params["strategy"] = document.querySelector('input[name="loopstrategy"]:checked').value;
   var modelEl = document.querySelector('input[name="model"]:checked');
   state.params["subagent_model"] = modelEl.value;
   state.customModel = document.getElementById("customModel").value;
@@ -910,7 +962,7 @@ function seedStateFromDom(){
 
 function wireParams(){
   document.getElementById("seg-platform").addEventListener("change", function(e){
-    state.params["platform"] = e.target.value; renderPreview();
+    state.params["platform"] = e.target.value; renderModelOptions(); renderPreview();
   });
   document.getElementById("seg-reproduce").addEventListener("change", function(e){
     state.params["reproduce"] = e.target.value; renderPreview();
@@ -940,7 +992,7 @@ function wireParams(){
     state.params["no_progress_k"] = e.target.value || "3"; renderPreview();
   });
   document.getElementById("seg-loopstrategy").addEventListener("change", function(e){
-    state.params["loop_strategy"] = e.target.value; renderPreview();
+    state.params["strategy"] = e.target.value; renderPreview();
   });
   document.getElementById("seg-model").addEventListener("change", function(e){
     state.params["subagent_model"] = e.target.value;

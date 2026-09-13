@@ -4,7 +4,11 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": ".harness/hooks/guard.sh", "timeout": 10 }
+          {
+            "type": "command",
+            "command": "d=$PWD; while :; do if [ -x \"$d/.harness/hooks/guard.sh\" ]; then exec \"$d/.harness/hooks/guard.sh\"; fi; [ \"$d\" = / ] && exit 0; d=$(dirname \"$d\"); done",
+            "timeout": 10
+          }
         ]
       }
     ]

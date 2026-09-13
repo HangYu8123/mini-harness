@@ -17,3 +17,7 @@ node_modules/
 .idea/
 .vscode/
 *.swp
+# pack-development notes (local only)
+/validation.md
+/trajectory.md
+/overall_goal.md
