@@ -16,34 +16,12 @@
 
 <p align="center">
   <strong>A second opinion before the first edit &middot; repo memory opened only when it pays &middot; a record of what helped, for future evolution</strong><br>
-  <sub>MiHa (mini-harness) is a supplementary layer built only from Claude Code's and Codex's native extension points: skills, subagents, hooks, plugins, and memory files. No runtime, no daemon. Off until you say <code>on</code>. Advisors run in the background and wait at most a bounded budget at one boundary.</sub>
 </p>
 
 ---
 
-You know the pattern. You ask for a fix, the agent edits the first file it finds, and the review two days later finds the version it should have checked, the second place the bug lives, and the package that already does the job. The knowledge was there. Nobody asked.
+You know the codebase, you know your personal preferences, now let your agents know as well. 
 
-MiHa puts the asking inside your agent. The cat naps. The advisors work.
-
-## Before / after
-
-You ask: "the retry helper double-fires on timeout, fix it."
-
-Without MiHa, the agent patches the helper and moves on.
-
-With MiHa, the same request, no extra typing:
-
-```text
-task: debug                    (inferred, you never picked it)
-online-researcher   → the HTTP client's 0.27 changelog: timeouts now raise twice on retry
-diversifier         → three plans; the rare one drops the helper's own retry and uses the client's
-devils-advocate     → the draft ignores the second caller in scheduler.py
-main agent          → adopts the client-side retry, fixes both callers, records why
-.harness/repo_info/update_logs.md   +1 line
-.harness/exec_traj/2026-09-13_debug_a1c9.md   what ran, what helped, what hurt
-```
-
-The main agent still makes every decision and applies the advice itself. The advisors never write code.
 
 ## How it works
 
@@ -221,8 +199,5 @@ The advisors run in the background and are waited on at one boundary for at most
 **Will it commit or push?**
 Only when you ask. It never uses `sudo`, and by default never lists Claude, Codex, or itself as author, co-author, contributor, or trailer in commits, PRs, or file headers. Your permission prompts stay the authority; `--guard` adds a hard block if you want one.
 
-**Can I use it with [ponytail](https://github.com/DietrichGebert/ponytail)?**
-Yes. Ponytail shrinks what the agent builds; MiHa decides what it should have checked first. Different halves.
-
 **Why a sleeping cat?**
-摸鱼. The cat naps while the advisors work. That is the whole pitch.
+摸鱼. The cat naps while the advisors work.
