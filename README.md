@@ -1,98 +1,228 @@
-# MiHa
+<p align="center">
+  <img src="assets/logo.png" width="420" alt="MiHa, the cat that naps while the advisors work">
+</p>
 
-**Meet MiHa, a mini-harness that lives in Claude Code and Codex in addition to the original workflow, and learns to adapt.**
+<h1 align="center">MiHa</h1>
 
-Install it in about two minutes, turn it on in a repo, keep working exactly as you do now. MiHa automatically identifies the task and adds a second opinion before the first edit (online researcher · diversifier · devil's advocate), a repo memory the agent opens only when it pays, and a record of what helped. It is lightweight: the advisors run in the background and wait at most a bounded budget at one boundary.
+<p align="center">
+  <em>You keep typing the way you always do. It reads, asks around, remembers, and writes down what helped.</em>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/github/stars/HangYu8123/mini-harness?style=flat-square&color=111111&label=stars" alt="Stars">
+  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex-111111?style=flat-square" alt="Works with Claude Code and Codex">
+  <img src="https://img.shields.io/badge/runtime-none-111111?style=flat-square" alt="No runtime">
+</p>
+
+<p align="center">
+  <strong>A second opinion before the first edit &middot; repo memory opened only when it pays &middot; a record of what helped</strong><br>
+  <sub>MiHa (mini-harness) is a supplementary layer built only from Claude Code's and Codex's native extension points: skills, subagents, hooks, plugins, and memory files. No runtime, no daemon. Off until you say <code>on</code>. Advisors run in the background and wait at most a bounded budget at one boundary.</sub>
+</p>
+
+---
+
+You know the pattern. You ask for a fix, the agent edits the first file it finds, and the review two days later finds the version it should have checked, the second place the bug lives, and the package that already does the job. The knowledge was there. Nobody asked.
+
+MiHa puts the asking inside your agent. The cat naps. The advisors work.
+
+## Before / after
+
+You ask: "the retry helper double-fires on timeout, fix it."
+
+Without MiHa, the agent patches the helper and moves on.
+
+With MiHa, the same request, no extra typing:
+
+```text
+task: debug                    (inferred, you never picked it)
+online-researcher   → the HTTP client's 0.27 changelog: timeouts now raise twice on retry
+diversifier         → three plans; the rare one drops the helper's own retry and uses the client's
+devils-advocate     → the draft ignores the second caller in scheduler.py
+main agent          → adopts the client-side retry, fixes both callers, records why
+.harness/repo_info/update_logs.md   +1 line
+.harness/exec_traj/2026-09-13_debug_a1c9.md   what ran, what helped, what hurt
+```
+
+The main agent still makes every decision and applies the advice itself. The advisors never write code.
+
+## How it works
+
+Every request, while MiHa is on:
+
+```
+1. Infer the task tag           → update · debug · refactor · query · check · exec · pr · init · loop
+2. Size-gate the advisors       → small & local: none
+                                  small but hinges on an outside fact: online-researcher only
+                                  everything else: researcher + diversifier + devil's advocate
+3. Read repo memory on need     → preference.md is the one standing read; the rest only when it pays
+4. Do the work the native way   → your platform's own flow, permissions, and tools
+5. Record the run               → .harness/exec_traj/, one file per run, never overwritten
+6. Consolidate on request       → wiki folds trajectories into harness_effect.md
+```
+
+Advisor waiting is bounded at 5 minutes. Their findings are dispositioned by the main agent: adopt, partly adopt, keep for later, or reject. Those decisions go in the trajectory, not in a checklist you have to click through.
+
+Lazy about ceremony, never about evidence: the advisors read the real code, the researcher cites every source, and the verifier never edits.
 
 ## Install
 
-Pick one. Each takes one to two minutes.
+Pick one host. Each takes one to two minutes.
 
-**A · Claude Code, as a plugin**
+### Claude Code (plugin)
 
-1. `/plugin marketplace add HangYu8123/mini-harness`
-2. `/plugin install mini-harness@mini-harness`
-3. `/mini-harness:mini-harness on` — this also creates `.harness/` in the repo (protocol copy, `repo_info/`, `exec_traj/`, `state/`); the plugin's own hook and agents cover the rest.
+```
+/plugin marketplace add HangYu8123/mini-harness
+```
+```
+/plugin install mini-harness@mini-harness
+```
+```
+/mini-harness:mini-harness on
+```
+
+The third command also creates `.harness/` in the repo (protocol copy, `repo_info/`, `exec_traj/`, `state/`). The plugin's own hook and agents cover the rest.
 
 To try it without installing: `claude --plugin-dir /path/to/mini-harness`.
 
-**B · Claude Code or Codex, standalone (bare `/mini-harness`)**
+### Claude Code or Codex (standalone, bare `/mini-harness`)
 
 ```bash
 git clone https://github.com/HangYu8123/mini-harness.git
 bash mini-harness/install.sh /path/to/your-repo
 ```
 
-Add `--guard` for a hook that hard-blocks `sudo`, `git push`, `git commit`, and tree-wide deletes even when you ask for them (opt-in; without it your permission prompts decide). The installer writes `.harness/`, the skills into `.agents/skills/` and `.claude/skills/`, the workers into `.claude/agents/` and `.codex/agents/`, a six-line block in `AGENTS.md`, `CLAUDE.md` importing it, and a routing hook that stays silent until `on`. Every file it writes is listed in `.harness/installed.tsv`; a same-named file it did not install, or one you edited, is kept and reported (`--force` overwrites). Run it again to update; `--uninstall` removes what it owns and keeps the memory. Codex: hooks are skipped until trusted — run `/hooks` once in Codex and trust the two mini-harness entries.
+The installer writes `.harness/`, the skills into `.agents/skills/` and `.claude/skills/`, the workers into `.claude/agents/` and `.codex/agents/`, a six-line block in `AGENTS.md`, a `CLAUDE.md` importing it, and a routing hook that stays silent until `on`. Every file it writes is listed in `.harness/installed.tsv`. A same-named file it did not install, or one you edited, is kept and reported (`--force` overwrites). Run it again to update; `--uninstall` removes what it owns and keeps the memory.
 
-**C · Codex, as a plugin**
+Add `--guard` for a hook that hard-blocks `sudo`, `git push`, `git commit`, and tree-wide deletes even when you ask for them. It is opt-in; without it your permission prompts decide.
 
-1. `codex plugin marketplace add HangYu8123/mini-harness`, then install from `/plugins`.
-2. `bash mini-harness/install.sh /path/to/your-repo --no-hooks` — Codex plugins carry no custom agents, so this adds `.codex/agents/` (and the standalone skills and `.harness/`; `--no-hooks` only avoids a second routing hook next to the plugin's).
-3. In Codex run `/hooks` and trust the plugin's route hook, then `$mini-harness on`.
+Codex: hooks are skipped until trusted. Run `/hooks` once in Codex and trust the two mini-harness entries.
 
-Check any install: open a new session and run `/mini-harness doctor` (Codex: `$mini-harness doctor`). It should print the resolved root and `ok` lines, never "unknown skill".
+### Codex (plugin)
+
+```bash
+codex plugin marketplace add HangYu8123/mini-harness
+```
+
+Install from `/plugins`, then:
+
+```bash
+bash mini-harness/install.sh /path/to/your-repo --no-hooks
+```
+
+Codex plugins carry no custom agents, so the installer adds `.codex/agents/` (plus the standalone skills and `.harness/`; `--no-hooks` only avoids a second routing hook next to the plugin's). In Codex run `/hooks`, trust the plugin's route hook, then `$mini-harness on`.
+
+### Check the install
+
+Open a new session and run `/mini-harness doctor` (Codex: `$mini-harness doctor`). It should print the resolved root and `ok` lines, never "unknown skill".
+
+That was it. The cat did not wake up.
 
 ## Use it
 
-1. In the repo: `/mini-harness on` — Codex: `$mini-harness on` — plugin install: `/mini-harness:mini-harness on`.
-2. Once per repo: `/mini-harness init` — builds the memory under `.harness/repo_info/`. About 5 minutes on a small repo, 15 on a large one. Its workers run at the init defaults — Sonnet 4.6 on Claude Code (`claude-sonnet-4-6`), GPT-5.6 Luna on Codex (`gpt-5.6-luna`), effort `max`; override with `subagent_model:` and `subagent_effort:` lines. `init` applies them with the effort control (`/mini-harness effort …`, which rewrites the worker definitions) and resets them when done. Claude Code reads worker definitions at session start, so the first `init` sets them and asks for one new session; run `/mini-harness init` again there.
+1. `/mini-harness on` (Codex: `$mini-harness on`; plugin: `/mini-harness:mini-harness on`).
+2. Once per repo: `/mini-harness init`. Builds the memory under `.harness/repo_info/`. About 5 minutes on a small repo, 15 on a large one. Claude Code reads worker definitions at session start, so the first `init` sets them and asks for one new session; run it again there.
 3. Ask for anything the way you always do.
 4. `/mini-harness off` when you want the plain platform back.
 
-No configuration or advisor approval is needed for an ordinary request:
+No configuration or advisor approval is needed for an ordinary request. The task type is inferred; override it with a `task: debug` line if you want. The advisors follow the size gate; `on` / `off` dials force either way. Recording is automatic. The final answer focuses on the result and its verification, with no routine status footer.
 
-- The main agent infers the task type internally. You can override it with `task: debug`, for example; otherwise there is no task-selection step.
-- The advisors follow a size gate. A small request that only concerns this repo gets none; a small request that hinges on an external fact — an API, a package version, an error from a library — gets the online researcher only; everything else gets all three. Initialization uses only its analysis and verification workers. `on` / `off` dials force either way. The main agent decides what to adopt, partly adopt, keep for later, or reject, and applies useful advice itself. Those decisions go in the trajectory, not a human checklist. Advisor waiting stays bounded at 5 minutes.
-- Recording is automatic on every task run: trajectory, applicable logs/memory, and subagent model/effort outcomes. The final answer focuses on the result and useful verification; no routine harness status footer. Use `status` for operational details.
+<details>
+<summary><strong>Dials, only when you want to override a default</strong></summary>
 
-Optional dials, only when you want to override defaults, as `key: value` lines or `dials: k=v`:
-`task=auto` · `diversifier=auto` · `devils_advocate=auto` · `online_research=auto` (`auto` = the size gate; `on` / `off` force) · `simplify=false` · `code_review=false` · `reproduce=false` (debug) · `advisory_budget=5m` · `adhd_output=on` · `subagent_model=inherit` · `subagent_effort=low` (`init` alone defaults to `claude-sonnet-4-6` | `gpt-5.6-luna` at `max`). User-specified overrides win; native permissions still apply.
+As `key: value` lines or `dials: k=v`:
 
-Other commands: `status` · `doctor` (checks files, hook paths, ownership) · `effort <level|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` (sets the workers' effort and model in the installed definitions — the effective setting on both platforms, read at session start) · `wiki` (fold trajectories into `harness_effect.md`) · `loop …` (repeat until a verifiable check passes) · `gui`.
+| Dial | Default | Meaning |
+|---|---|---|
+| `task` | `auto` | force a task type |
+| `online_research` · `diversifier` · `devils_advocate` | `auto` | `auto` = size gate; `on` / `off` force |
+| `simplify` · `code_review` | `false` | run the simplification or review pass after the change |
+| `reproduce` | `false` | debug only: reproduce before diagnosing |
+| `advisory_budget` | `5m` | how long the main agent waits at the boundary |
+| `adhd_output` | `on` | the i-have-adhd output style |
+| `subagent_model` · `subagent_effort` | `inherit` · `low` | worker model and effort for this request |
 
-Model selections are applied through native launch controls. Claude supports aliases and full IDs; Codex uses a general-agent fallback carrying the worker role when a custom definition would override the selected settings. Per-request selections do not rewrite shared worker files. The trajectory records the effective settings when confirmed, and flags unavailable selections. Preset names were checked against the [official Codex models](https://learn.chatgpt.com/docs/models) and [Claude models](https://platform.claude.com/docs/en/models/overview); account availability is checked at launch. Implementation details: `harness/worker_models.md`.
+`init` alone defaults its workers to `claude-sonnet-4-6` on Claude Code and `gpt-5.6-luna` on Codex at effort `max`; override with `subagent_model:` and `subagent_effort:` lines. User-specified overrides win; native permissions still apply.
 
-## Build a prompt with the request builder
+Model selections go through native launch controls. Claude supports aliases and full IDs; Codex uses a general-agent fallback carrying the worker role when a custom definition would override the selected settings. Per-request selections never rewrite shared worker files. Preset names were checked against the [official Codex models](https://learn.chatgpt.com/docs/models) and [Claude models](https://platform.claude.com/docs/en/models/overview). Details: `harness/worker_models.md`.
 
-Two files in the pack root are a small GUI for writing a MiHa request without typing the dials by hand:
+</details>
 
-- `harness_gui.html` — the request builder page. Nine tabs, one per task type (update · debug · refactor · query · check · exec · pr · init · loop). Each tab shows the dials as buttons, one text box per field the template asks for, and a live preview of the finished prompt. It is a single self-contained page: double-click it to use it offline with the embedded copies of `request_template/*.md`. It never writes to disk.
-- `harness_gui.py` — the launcher. `python3 harness_gui.py` serves the page from a local port and opens it in your browser. Serving it adds two things the file:// page cannot do: it reloads the templates live from `request_template/`, and its Browse button opens a native file dialog that inserts real repo-relative paths into the "Important files" boxes.
+## Commands
 
-How to use it:
+| Command | What it does |
+|---|---|
+| `/mini-harness on \| off \| status` | Turn the layer on or off, or show the current state and dials. |
+| `/mini-harness init` | Build the repo memory in `.harness/repo_info/`. Run once per repo, again to re-initialize. |
+| `/mini-harness doctor` | Check files, hook paths, and ownership. Prints `ok` lines or what is wrong. |
+| `/mini-harness effort <level\|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` | Set the workers' effort and model in the installed definitions, read at session start. |
+| `/mini-harness wiki` | Fold unconsolidated trajectories into `harness_effect.md`: what helped, what hurt, one proposed change at a time. |
+| `/mini-harness loop …` | Repeat a request until a verifiable check passes. |
+| `/mini-harness gui` | Open the request builder. |
+| `/mini-harness <request>` | Any request, routed through the protocol with an explicit prefix. |
 
-1. `python3 harness_gui.py` from the MiHa folder (or double-click `harness_gui.html`).
-2. Pick the platform (Claude Code · Claude Code plugin · Codex) — it sets the first line, `/mini-harness`, `/mini-harness:mini-harness`, or `$mini-harness`.
-3. Pick the task tab, flip the dials, fill the fields. Unfilled fields stay in the prompt as blank lines, so nothing is silently dropped.
-4. Copy, paste into Claude Code or Codex. Download .md saves the same text.
+Codex: `$mini-harness …`. Plugin install on Claude Code: `/mini-harness:mini-harness …`. Direct skills: `/mh-init`, `/mh-loop`, `/mh-wiki`, `/i-have-adhd`.
 
-What it protects you from: a misspelled dial key, a dial that does not exist for that task (`reproduce` only appears on debug, loop caps only on loop), a wrong invocation token for the platform, and out-of-date init defaults — the Init tab already emits `claude-sonnet-4-6` or `gpt-5.6-luna` at `max` for the platform you chose.
+## Request builder
+
+Two files in the pack root are a small GUI for writing a MiHa request without typing the dials by hand.
+
+- `harness_gui.html` is the page: nine tabs, one per task type, dials as buttons, one text box per field, and a live preview of the prompt. It is self-contained; double-click it to use it offline. It never writes to disk.
+- `harness_gui.py` is the launcher: `python3 harness_gui.py` serves the page locally, reloads templates live from `request_template/`, and adds a Browse button that inserts real repo-relative paths.
+
+Pick the platform (it sets the invocation token), pick the task tab, flip the dials, fill the fields, copy, paste. It protects you from a misspelled dial, a dial that does not exist for that task, a wrong token for the platform, and out-of-date init defaults.
 
 ## What it writes
 
-`.harness/repo_info/` — read on need; its `README.md` says when each file pays. The one standing read is `preference.md`, so your standing choices are always honored:
+`.harness/repo_info/` is read on need. Its `README.md` says when each file pays.
 
-- `preference.md` — your standing choices, one line each.
-- `update_logs.md` — one line per change: date · task · request · files · functions.
-- `known_issues.md` and `persistent_issues.md` — what is wrong, and what keeps coming back.
-- `past_QA.md`, `codebase_overview.md`, `scripts_overview.md` — answers and orientation.
-- `harness_effect.md` — which parts of MiHa helped or hurt, consolidated by `wiki`; never read at the start of a run.
+| File | Holds |
+|---|---|
+| `preference.md` | your standing choices, one line each. The one file always read. |
+| `update_logs.md` | one line per change: date · task · request · files · functions |
+| `known_issues.md` · `persistent_issues.md` | what is wrong, and what keeps coming back |
+| `past_QA.md` · `codebase_overview.md` · `scripts_overview.md` | answers and orientation |
+| `harness_effect.md` | which parts of MiHa helped or hurt, consolidated by `wiki`. Never read at the start of a run. |
 
-`.harness/exec_traj/` — one file per run (`<timestamp>_<task>_<id>.md`, never overwritten): what ran, what the advisors contributed, what changed, and the helped / hurt lines the wiki is built from. `wiki` consolidates every record exactly once.
+`.harness/exec_traj/` holds one file per run (`<timestamp>_<task>_<id>.md`, never overwritten): what ran, what the advisors contributed, what changed, and the helped / hurt lines the wiki is built from.
 
 ## Inside the pack
 
 ```text
-harness/         harness.md (the protocol, ≈2.5k tokens) · tasks.md · exec_traj.md · philosophy.md · loop_control.md · stay_active.md · repo_map.md · reinitialize.md
-skills/          mini-harness (entry + mh.sh: on/off/status/doctor/traj) · mh-init · mh-loop · mh-wiki · i-have-adhd (vendored, MIT) · breakdown-pr · code-simplification · code-review-and-quality
-agent_sources/   nine workers → agents/ (Claude Code, plugin) · .codex/agents/ via sync_agents.py
-hooks/           route.sh (activation routing) · guard.sh (optional) · plugin and standalone hook configs
-harness_gui.html + harness_gui.py + request_template/   the request builder: a GUI that assembles a MiHa prompt (dials, fields, platform token) from the templates
+harness/          harness.md (the protocol, ≈2.5k tokens) · tasks.md · exec_traj.md · philosophy.md · loop_control.md · stay_active.md · repo_map.md · reinitialize.md · worker_models.md
+skills/           mini-harness (entry + mh.sh) · mh-init · mh-loop · mh-wiki · i-have-adhd (vendored, MIT) · breakdown-pr · code-simplification · code-review-and-quality
+agent_sources/    nine workers → agents/ (Claude Code, plugin) · .codex/agents/ via sync_agents.py
+hooks/            route.sh (activation routing) · guard.sh (optional) · plugin and standalone hook configs
+harness_gui.*     the request builder, fed by request_template/*.md
 ```
+
+The nine workers: `online-researcher`, `diversifier`, `devils-advocate` (the advisors) · `focus-analyst`, `broad-analyst`, `free-analyst` (analysis) · `implementer`, `executor`, `verifier` (doing and checking).
+
+## Development
+
+`agent_sources/*.agent.md` is the single source for every worker. After editing one:
+
+```bash
+python3 sync_agents.py          # regenerates agents/ and .codex/agents/; never hand-edit those
+python3 sync_gui_templates.py   # after editing request_template/*.md
+```
+
+Keep files short: `harness.md` around 2.5k tokens, each `SKILL.md` at most about 2.5k, satellites at most about 1.5k. Every rule traces to a real failure. Delete rules that stop earning their tokens.
 
 Design sources: arXiv 2609.00006 (eleven-system harness study), 2603.25723 (natural-language harnesses), 2604.25850, 2606.20631, 2608.27454 (WikiSkill), LangChain's isolated-verifier rule (Sep 2026), and the conventions of `obra/superpowers`, `mattpocock/skills`, `addyosmani/agent-skills`, `garrytan/gstack`, `ayghri/i-have-adhd`.
 
-Safety: MiHa never uses `sudo`, commits, pushes, or opens a PR only when you ask, and by default never lists Claude, Codex, or itself as author, co-author, or contributor in commits, PRs, or file headers; your permission prompts stay the authority (`--guard` adds a hard block if you want one). Hook paths are quoted for repo paths with spaces, and Codex hooks resolve the repo root from any subdirectory; `hooks/README.md` has the details and the Codex trust step.
+## FAQ
 
-Next: `bash mini-harness/install.sh /path/to/your-repo`, then `/mini-harness on`.
+**Does it replace my platform's workflow?**
+No. The native flow runs as usual. MiHa adds the tag, the advisors, the memory, and the record around it, and gets out of the way when you say `off`.
+
+**Will it slow me down?**
+The advisors run in the background and are waited on at one boundary for at most the advisory budget. Small local requests get no advisors at all.
+
+**Will it commit or push?**
+Only when you ask. It never uses `sudo`, and by default never lists Claude, Codex, or itself as author, co-author, contributor, or trailer in commits, PRs, or file headers. Your permission prompts stay the authority; `--guard` adds a hard block if you want one.
+
+**Can I use it with [ponytail](https://github.com/DietrichGebert/ponytail)?**
+Yes. Ponytail shrinks what the agent builds; MiHa decides what it should have checked first. Different halves.
+
+**Why a sleeping cat?**
+摸鱼. The cat naps while the advisors work. That is the whole pitch.
