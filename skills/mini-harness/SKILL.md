@@ -2,7 +2,7 @@
 name: mini-harness
 description: mini-harness · a supplementary layer over Claude Code and Codex — tags the task, runs online-researcher / diversifier / devils-advocate in addition to the native flow at the advisory boundary, keeps a repo memory the agent may consult, and records the trajectory. Use only when the user invokes it (/mini-harness · $mini-harness) or it is active in this repo.
 disable-model-invocation: true
-argument-hint: "on | off | status | doctor | effort <level|reset> … | init … | loop … | wiki | gui | <request> [key: value header lines | dials: k=v …]"
+argument-hint: "on | off | status | doctor | effort <level|save|restore|reset> … | init … | loop … | wiki | gui | <request> [key: value header lines | dials: k=v …]"
 ---
 # mini-harness
 
@@ -15,7 +15,7 @@ Helper: `bash "${CLAUDE_SKILL_DIR}/mh.sh" <cmd>` — Claude Code fills the varia
 | `off` | `mh.sh off`. Confirm in one line; drop the output style. |
 | `status` | `mh.sh status` and relay it: active or not (since when), root, whether `repo_info/` was initialized, trajectories and how many are unconsolidated, worker counts and effective model/effort; add the dial defaults (harness.md §11). |
 | `doctor` | `mh.sh doctor`: the status plus checks of protocol files, hook path quoting, the Codex trust step, the AGENTS block, and locally modified owned files. Relay `FAIL`/`warn` lines with the fix each names. |
-| `effort …` | `mh.sh effort <low\|medium\|high\|xhigh\|max\|inherit\|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` — the effort control (harness.md §6): rewrites the installed worker definitions, the effective setting on both platforms, and prints them. Relay the printed lines, including that definitions are read at session start. |
+| `effort …` | `mh.sh effort <low\|medium\|high\|xhigh\|max\|inherit\|reset\|save\|restore> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` — the effort control (harness.md §6): rewrites the installed worker definitions, the effective setting on both platforms, and prints them; `save` / `restore` bracket a temporary change (init uses them), `reset` is the shipped defaults. Relay the printed lines, including that definitions are read at session start. |
 | `init …` | Follow `skills/mh-init/SKILL.md` with the remaining arguments (it accepts `subagent_model:` / `subagent_effort:` lines). |
 | `loop …` | Follow `skills/mh-loop/SKILL.md` with the remaining arguments. |
 | `wiki` | Follow `skills/mh-wiki/SKILL.md`. |

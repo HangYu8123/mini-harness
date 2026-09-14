@@ -132,7 +132,7 @@ Model selections go through native launch controls. Claude supports aliases and 
 | `/mini-harness on \| off \| status` | Turn the layer on or off, or show the current state and dials. |
 | `/mini-harness init` | Build the repo memory in `.harness/repo_info/`. Run once per repo, again to re-initialize. |
 | `/mini-harness doctor` | Check files, hook paths, and ownership. Prints `ok` lines or what is wrong. |
-| `/mini-harness effort <level\|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` | Set the workers' effort and model in the installed definitions, read at session start. |
+| `/mini-harness effort <level\|save\|restore\|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` | Set the workers' effort and model in the installed definitions, read at session start; `save` / `restore` bracket a temporary change (init restores your settings when it finishes). |
 | `/mini-harness wiki` | Fold unconsolidated trajectories into `harness_effect.md`: what helped, what hurt, one proposed change at a time. |
 | `/mini-harness loop …` | Repeat a request until a verifiable check passes. |
 | `/mini-harness gui` | Open the request builder. |

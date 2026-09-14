@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mini-harness workspace helper — on | off | status | doctor | traj <task> | effort <level|reset> …
+# mini-harness workspace helper — on | off | status | doctor | traj <task> | effort <level|save|restore|reset> …
 #
 # Original request: activation must bootstrap the writable workspace layout even
 # for a plugin-only install, and on/off/status/hooks must agree on one root rule.
@@ -59,6 +59,24 @@ edit_codex() { local f=$1 m=$2 e=$3 t hm he; t=$(mktemp)
     /^model_reasoning_effort = / { if(e!=""){ if(e!="inherit") print "model_reasoning_effort = \"" e "\""; next } }
     { print }
     /^sandbox_mode = / { if(m!="" && m!="inherit" && hm==0) print "model = \"" m "\""; if(e!="" && e!="inherit" && he==0) print "model_reasoning_effort = \"" e "\"" }' "$f" > "$t" && cat "$t" > "$f"; rm -f "$t"; }
+# Worker definition dirs: the repo's own, else the plugin's agents/ for Claude Code; Codex only in the repo.
+worker_dirs() { cdir=""; ls "$ROOT/.claude/agents"/*.md >/dev/null 2>&1 && cdir="$ROOT/.claude/agents"
+  [ -z "$cdir" ] && [ -n "$PACK" ] && ls "$PACK/agents"/*.md >/dev/null 2>&1 && cdir="$PACK/agents"   # plugin install: the plugin's own agents/
+  xdir=""; ls "$ROOT/.codex/agents"/*.toml >/dev/null 2>&1 && xdir="$ROOT/.codex/agents"
+  [ -n "$cdir$xdir" ] || { echo "mh.sh effort: no worker definitions under $ROOT/.claude/agents, $ROOT/.codex/agents, or the pack — run install.sh or /mini-harness on" >&2; return 1; }; }
+# Effective values as written in a definition; a missing line means inherit.
+claude_val() { local v; v=$(sed -n "s/^$2: *\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" "$1" | head -n1); printf '%s' "${v:-inherit}"; }
+codex_val() { local v; v=$(sed -n "s/^$2 = \"\([^\"]*\)\"$/\1/p" "$1" | head -n1); printf '%s' "${v:-inherit}"; }
+print_effective() { [ -n "$1" ] && [ -f "$1/implementer.md" ] && echo "effective claude · $(grep -E '^(model|effort):' "$1/implementer.md" | tr '\n' ' ')· researcher $(grep -E '^effort:' "$1/online-researcher.md" 2>/dev/null | tr '\n' ' ')"
+  [ -n "$2" ] && [ -f "$2/implementer.toml" ] && echo "effective codex · $(grep -E '^(model|model_reasoning_effort) = ' "$2/implementer.toml" | tr '\n' ' ')· researcher $(grep -E '^model_reasoning_effort = ' "$2/online-researcher.toml" 2>/dev/null | tr '\n' ' ')"; return 0; }
+# Rewrite every generated definition: $1/$2 = Claude model/effort, $3/$4 = Codex model/effort, $5/$6 = researcher efforts (Claude, Codex).
+apply_settings() { local cm=$1 lvl=$2 xm=$3 xlvl=$4 rlvl=$5 xrlvl=$6 f e; nc=0; nx=0
+  for f in ${cdir:+"$cdir"/*.md}; do [ -f "$f" ] && grep -q "$MARKER" "$f" || continue
+    e=$lvl; [ "$(basename "$f" .md)" = online-researcher ] && e=$rlvl
+    edit_claude "$f" "$cm" "$e"; nc=$((nc+1)); case "$f" in "$ROOT"/*) refresh_manifest "${f#"$ROOT"/}";; esac; done
+  for f in ${xdir:+"$xdir"/*.toml}; do [ -f "$f" ] && grep -q "$MARKER" "$f" || continue
+    e=$xlvl; [ "$(basename "$f" .toml)" = online-researcher ] && e=$xrlvl
+    edit_codex "$f" "$xm" "$e"; nx=$((nx+1)); refresh_manifest "${f#"$ROOT"/}"; done; }
 refresh_manifest() { local r=$1 h; [ -f "$H/installed.tsv" ] && grep -q "	$r\$" "$H/installed.tsv" || return 0   # keep the rewritten file "owned and unmodified"
   h=$(hash_of "$ROOT/$r"); awk -F'\t' -v OFS='\t' -v p="$r" -v h="$h" '$2==p{$1=h}1' "$H/installed.tsv" > "$H/installed.tsv.tmp" && mv "$H/installed.tsv.tmp" "$H/installed.tsv"; }
 
@@ -103,33 +121,44 @@ case "$cmd" in
     [ -f "$H/state/active" ] && [ ! -f "$H/harness.md" ] && bad "active marker without protocol files"
     exit $fail;;
   effort)
-    # effort <low|medium|high|xhigh|max|inherit|reset> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>] [model=<id|inherit>]
+    # effort <low|medium|high|xhigh|max|inherit|reset|save|restore> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>] [model=<id|inherit>]
     # The one effort/model control that works the same on both platforms: both read a worker's effort from its
     # definition (the Claude Code Agent tool takes model aliases only and has no effort parameter; a Codex agent
     # file's settings win over a spawn request). Rewrites only generated definitions; `reset` = shipped defaults.
-    lvl=${2:-}; [ -n "$lvl" ] || { echo "usage: mh.sh effort <low|medium|high|xhigh|max|inherit|reset> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>]" >&2; exit 2; }
-    shift 2; rlvl=""; cm=""; xm=""
+    # `save` snapshots the current settings to state/effort_saved (kept if one exists); `restore` puts that snapshot
+    # back and removes it — a temporary change (init's per-run dials) returns to what the user had, not the shipped defaults.
+    lvl=${2:-}; [ -n "$lvl" ] || { echo "usage: mh.sh effort <low|medium|high|xhigh|max|inherit|reset|save|restore> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>]" >&2; exit 2; }
+    shift 2; rlvl=""; cm=""; xm=""; SAVED="$H/state/effort_saved"
+    case "$lvl" in save|restore) [ $# -eq 0 ] || { echo "mh.sh effort $lvl takes no arguments" >&2; exit 2; };; esac
+    worker_dirs || exit 1
+    if [ "$lvl" = save ]; then
+      if [ -f "$SAVED" ]; then echo "mini-harness effort · snapshot kept ($SAVED, $(sed -n 's/^saved=//p' "$SAVED")) — restore it before saving another"; exit 0; fi
+      mkdir -p "$H/state"
+      { echo "saved=$(date '+%Y-%m-%d %H:%M')"
+        [ -n "$cdir" ] && [ -f "$cdir/implementer.md" ] && { echo "claude_model=$(claude_val "$cdir/implementer.md" model)"; echo "claude_effort=$(claude_val "$cdir/implementer.md" effort)"; echo "claude_researcher=$(claude_val "$cdir/online-researcher.md" effort)"; }
+        [ -n "$xdir" ] && [ -f "$xdir/implementer.toml" ] && { echo "codex_model=$(codex_val "$xdir/implementer.toml" model)"; echo "codex_effort=$(codex_val "$xdir/implementer.toml" model_reasoning_effort)"; echo "codex_researcher=$(codex_val "$xdir/online-researcher.toml" model_reasoning_effort)"; }
+      } > "$SAVED"
+      echo "mini-harness effort · saved current settings to $SAVED (restore with: effort restore)"; print_effective "$cdir" "$xdir"; exit 0
+    fi
+    if [ "$lvl" = restore ]; then
+      [ -f "$SAVED" ] || { echo "mini-harness effort · no snapshot ($SAVED) — definitions unchanged"; print_effective "$cdir" "$xdir"; exit 0; }
+      sv() { sed -n "s/^$1=//p" "$SAVED" | head -n1; }
+      when=$(sv saved)
+      apply_settings "$(sv claude_model)" "$(sv claude_effort)" "$(sv codex_model)" "$(sv codex_effort)" "$(sv claude_researcher)" "$(sv codex_researcher)"
+      rm -f "$SAVED"
+      echo "mini-harness effort · restored the settings saved $when · rewrote $nc Claude Code definition(s)${cdir:+ in $cdir} · $nx Codex definition(s)${xdir:+ in $xdir}"
+      print_effective "$cdir" "$xdir"; echo "note: a running session may not reload definitions — check each worker's launch metadata and record requested vs effective"; exit 0
+    fi
     [ "$lvl" = reset ] && { lvl=low; rlvl=medium; cm=inherit; xm=inherit; }
     for a in "$@"; do case "$a" in
       researcher=*) rlvl=${a#*=};; claude-model=*) cm=${a#*=};; codex-model=*) xm=${a#*=};; model=*) cm=${a#*=}; xm=${a#*=};;
       *) echo "mh.sh effort: unknown argument '$a'" >&2; exit 2;; esac; done
-    for l in "$lvl" "$rlvl"; do case "$l" in ""|low|medium|high|xhigh|max|inherit) ;; *) echo "mh.sh effort: unknown level '$l' (low|medium|high|xhigh|max|inherit|reset)" >&2; exit 2;; esac; done
+    for l in "$lvl" "$rlvl"; do case "$l" in ""|low|medium|high|xhigh|max|inherit) ;; *) echo "mh.sh effort: unknown level '$l' (low|medium|high|xhigh|max|inherit|reset|save|restore)" >&2; exit 2;; esac; done
     case "$cm" in gpt-*) echo "mh.sh effort: '$cm' is a Codex model — use codex-model=" >&2; exit 2;; *[!A-Za-z0-9._:/-]*) echo "mh.sh effort: bad model id '$cm'" >&2; exit 2;; esac
     case "$xm" in claude-*|opus|sonnet|haiku|fable) echo "mh.sh effort: '$xm' is a Claude model — use claude-model=" >&2; exit 2;; *[!A-Za-z0-9._:/-]*) echo "mh.sh effort: bad model id '$xm'" >&2; exit 2;; esac
-    cdir=""; ls "$ROOT/.claude/agents"/*.md >/dev/null 2>&1 && cdir="$ROOT/.claude/agents"
-    [ -z "$cdir" ] && [ -n "$PACK" ] && ls "$PACK/agents"/*.md >/dev/null 2>&1 && cdir="$PACK/agents"   # plugin install: the plugin's own agents/
-    xdir=""; ls "$ROOT/.codex/agents"/*.toml >/dev/null 2>&1 && xdir="$ROOT/.codex/agents"
-    [ -n "$cdir$xdir" ] || { echo "mh.sh effort: no worker definitions under $ROOT/.claude/agents, $ROOT/.codex/agents, or the pack — run install.sh or /mini-harness on" >&2; exit 1; }
-    nc=0; nx=0
-    for f in ${cdir:+"$cdir"/*.md}; do [ -f "$f" ] && grep -q "$MARKER" "$f" || continue
-      e=$lvl; [ "$(basename "$f" .md)" = online-researcher ] && e=$rlvl
-      edit_claude "$f" "$cm" "$e"; nc=$((nc+1)); case "$f" in "$ROOT"/*) refresh_manifest "${f#"$ROOT"/}";; esac; done
-    for f in ${xdir:+"$xdir"/*.toml}; do [ -f "$f" ] && grep -q "$MARKER" "$f" || continue
-      e=$lvl; [ "$(basename "$f" .toml)" = online-researcher ] && e=$rlvl
-      edit_codex "$f" "$xm" "$e"; nx=$((nx+1)); refresh_manifest "${f#"$ROOT"/}"; done
+    apply_settings "$cm" "$lvl" "$xm" "$lvl" "$rlvl" "$rlvl"
     echo "mini-harness effort · rewrote $nc Claude Code definition(s)${cdir:+ in $cdir} · $nx Codex definition(s)${xdir:+ in $xdir}"
-    [ -n "$cdir" ] && [ -f "$cdir/implementer.md" ] && echo "effective claude · $(grep -E '^(model|effort):' "$cdir/implementer.md" | tr '\n' ' ')· researcher $(grep -E '^effort:' "$cdir/online-researcher.md" 2>/dev/null | tr '\n' ' ')"
-    [ -n "$xdir" ] && [ -f "$xdir/implementer.toml" ] && echo "effective codex · $(grep -E '^(model|model_reasoning_effort) = ' "$xdir/implementer.toml" | tr '\n' ' ')· researcher $(grep -E '^model_reasoning_effort = ' "$xdir/online-researcher.toml" 2>/dev/null | tr '\n' ' ')"
+    print_effective "$cdir" "$xdir"
     echo "note: a running session may not reload definitions — check each worker's launch metadata and record requested vs effective"
     exit 0;;
   traj)
@@ -145,5 +174,5 @@ case "$cmd" in
         printf '%s\n' "$f"; exit 0
       fi
     done; echo "mini-harness: could not create a unique trajectory file" >&2; exit 1;;
-  *) echo "usage: mh.sh on | off | status | doctor | traj <task> | effort <level|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]" >&2; exit 2;;
+  *) echo "usage: mh.sh on | off | status | doctor | traj <task> | effort <level|reset|save|restore> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]" >&2; exit 2;;
 esac

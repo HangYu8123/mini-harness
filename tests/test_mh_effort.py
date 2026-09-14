@@ -101,6 +101,45 @@ class EffortControlTests(unittest.TestCase):
             self.mh(*args, ok=False)
         self.assertEqual(before, self.snapshot())
 
+    def test_save_then_restore_returns_to_the_prior_settings(self):
+        # The init skill sets its own dials for one run; restore must bring back what the user had, not the shipped defaults.
+        self.mh("effort", "high", "claude-model=opus", "codex-model=gpt-5.6-luna", "researcher=xhigh")
+        before = self.snapshot()
+        out = self.mh("effort", "save").stdout
+        self.assertIn("saved current settings", out)
+        saved = (self.repo / ".harness/state/effort_saved").read_text()
+        for line in ("claude_model=opus", "claude_effort=high", "claude_researcher=xhigh",
+                     "codex_model=gpt-5.6-luna", "codex_effort=high", "codex_researcher=xhigh"):
+            self.assertIn(line + "\n", saved)
+        self.mh("effort", "max", "claude-model=claude-sonnet-4-6", "codex-model=gpt-5.6-luna")
+        self.assertEqual(self.front("implementer.md")["effort"], "max")
+        self.assertIn("snapshot kept", self.mh("effort", "save").stdout)   # a second save never overwrites the user's snapshot
+        self.assertEqual(saved, (self.repo / ".harness/state/effort_saved").read_text())
+        out = self.mh("effort", "restore").stdout
+        self.assertIn("restored the settings saved", out)
+        self.assertEqual(before, self.snapshot())
+        self.assertFalse((self.repo / ".harness/state/effort_saved").exists())
+        self.assert_manifest_matches_files()
+
+    def test_restore_without_a_snapshot_changes_nothing(self):
+        self.mh("effort", "high", "claude-model=opus")
+        before = self.snapshot()
+        out = self.mh("effort", "restore").stdout
+        self.assertIn("no snapshot", out)
+        self.assertEqual(before, self.snapshot())
+
+    def test_save_records_inherit_for_missing_lines(self):
+        self.mh("effort", "inherit", "model=inherit", "researcher=inherit")
+        self.mh("effort", "save")
+        saved = (self.repo / ".harness/state/effort_saved").read_text()
+        for key in ("claude_model", "claude_effort", "claude_researcher", "codex_model", "codex_effort", "codex_researcher"):
+            self.assertIn(f"{key}=inherit\n", saved)
+        self.mh("effort", "max", "model=inherit")
+        self.mh("effort", "restore")
+        self.assertNotIn("effort", self.front("implementer.md"))
+        self.assertNotIn("model_reasoning_effort", self.toml("implementer.toml"))
+        self.mh("effort", "save", "extra", ok=False)
+
     def test_plugin_layout_edits_the_pack_agents(self):
         shutil.rmtree(self.repo / ".claude/agents")
         shutil.rmtree(self.repo / ".codex/agents")
