@@ -80,6 +80,12 @@
   .custom-model.show{display:block}
   .custom-model input{width:100%;font-family:var(--mono);font-size:13px;padding:7px 9px;
         border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink)}
+  .setting{display:block;margin-top:12px;font-size:12px;color:var(--muted);font-weight:600}
+  .setting select{display:block;width:100%;margin-top:5px;padding:8px 10px;border:1px solid var(--line);
+        border-radius:8px;background:var(--bg);color:var(--ink);font:13px var(--mono)}
+  .setting select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .settings-note{font-size:12px;color:var(--muted);margin:10px 0 0}
+  button.act:disabled{opacity:.45;cursor:not-allowed}
   .pathbox{margin-top:6px;background:var(--code-bg);color:var(--code-ink);border-radius:8px;
         padding:10px 12px;font-family:var(--mono);font-size:12.5px;word-break:break-all}
   .pathbox .lbl{display:block;color:#8b94a7;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}
@@ -141,6 +147,44 @@
           <label><input type="radio" name="platform" value="claude-plugin"><span>Claude Code (plugin)</span></label>
           <label><input type="radio" name="platform" value="codex"><span>Codex</span></label>
         </div>
+      </fieldset>
+
+      <fieldset id="fs-subagents" style="display:none">
+        <legend>Subagent settings command <span style="font-weight:400">(default off)</span></legend>
+        <div class="seg" id="seg-subagent-action" role="radiogroup" aria-label="Subagent settings command">
+          <label><input type="radio" name="subagent-action" value="off" checked><span>Turn off</span></label>
+          <label><input type="radio" name="subagent-action" value="on"><span>Turn on</span></label>
+          <label><input type="radio" name="subagent-action" value="status"><span>Check status</span></label>
+        </div>
+        <p class="settings-note">Only subagent model and effort change. Your main agent, delegation decisions, and workflow stay as they are. This does not turn on the full harness.</p>
+        <div id="subagent-options" style="display:none">
+          <label class="setting" for="subagent-model">Subagent model
+            <select id="subagent-model"></select>
+          </label>
+          <div class="custom-model" id="subagent-custom-wrap">
+            <label class="setting" for="subagent-custom-model">Custom model ID</label>
+            <input id="subagent-custom-model" type="text" autocomplete="off" spellcheck="false" placeholder="Enter a model ID for this platform">
+          </div>
+          <label class="setting" for="subagent-effort">Worker effort
+            <select id="subagent-effort">
+              <option value="">Keep previous effort</option>
+              <option value="inherit">Inherit session effort</option>
+              <option value="low">low</option><option value="medium">medium</option>
+              <option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option>
+            </select>
+          </label>
+          <label class="setting" for="subagent-researcher">Online researcher effort (optional)
+            <select id="subagent-researcher">
+              <option value="">No separate override</option>
+              <option value="inherit">Inherit session effort</option>
+              <option value="low">low</option><option value="medium">medium</option>
+              <option value="high">high</option><option value="xhigh">xhigh</option><option value="max">max</option>
+            </select>
+          </label>
+          <p class="settings-note">Choose a model, an effort, or both. A new Turn on command replaces the previous selection. Lower effort does not add more agents; ask for parallel work in your task.</p>
+        </div>
+        <p class="settings-note" id="subagent-platform-note"></p>
+        <p class="settings-note" id="subagent-error" role="status"></p>
       </fieldset>
 
       <fieldset id="fs-reproduce" style="display:none">
@@ -231,7 +275,7 @@
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="fs-model">
         <legend>subagent_model</legend>
         <!-- Mirrors request_template/*.md's `inherit` default. applyParams() only rewrites the
              header line, never the template body, so selecting another model changes the
@@ -262,7 +306,7 @@
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="fs-effort">
         <legend>subagent_effort</legend>
         <!-- The subagent effort tier (inherit/low/medium/high/xhigh/max). Semantics are defined
              by harness.md §6 ("Subagent effort"): applied
@@ -301,7 +345,7 @@
         </div>
       </fieldset>
 
-      <fieldset>
+      <fieldset id="fs-adhd">
         <!-- Presentation-only dial for the final chat message, resolved at each workflow's last
              step per skills/i-have-adhd (vendored):
              on = outcome first, <= 5 visible items per group, one `Next:` action; off = the
@@ -318,12 +362,15 @@
 
     <!-- RIGHT: fill + output -->
     <section class="panel">
-      <h2>3 · Fill in</h2>
-      <p class="hint" id="fillHint"></p>
-      <div id="fields"></div>
+      <div id="fill-section">
+        <h2>3 · Fill in</h2>
+        <p class="hint" id="fillHint"></p>
+        <div id="fields"></div>
+      </div>
+      <p class="hint" id="commandHint" style="display:none">Copy this command and paste it into your agent to apply it. This page does not read or change the active setting.</p>
 
       <div class="preview-head" style="margin-top:18px">
-        <h2>4 · Prompt</h2>
+        <h2 id="preview-title">4 · Prompt</h2>
         <div class="btns">
           <button class="act primary" id="btnCopy" type="button">Copy</button>
           <button class="act" id="btnDownload" type="button">Download .md</button>
@@ -395,7 +442,10 @@ var CATEGORIES = [
    kw:"initialize, init, setup repo, create overview, bootstrap memory"},
   {id:"loop", label:"Loop", hasDiversifier:true, hasLoopCaps:true, hasCodeReview:true, hasOnlineResearcher:true, hasDevilsAdvocate:true,
    desc:"Repeat a delegated action until a goal or exit condition is met.",
-   kw:"loop, iterate, repeat, keep going until, until, converge"}
+   kw:"loop, iterate, repeat, keep going until, until, converge"},
+  {id:"subagents", label:"Subagents", command:true,
+   desc:"Set subagent model and effort independently of the full harness.",
+   kw:"bulk browsing, file reading, cheap workers, high or low effort"}
 ];
 var CAT_BY_ID = {};
 CATEGORIES.forEach(function(c){ CAT_BY_ID[c.id] = c; });
@@ -411,6 +461,7 @@ var state = {
   cat: "update",
   params: { "platform":"claude", "reproduce":"false", "simplify":"false", "code_review":"false", "diversifier":"auto", "devils_advocate":"auto", "online_research":"auto", "subagent_model":"inherit", "subagent_effort":"low", "online_researcher_effort":"medium", "adhd_output":"on", "max_iterations":"10", "no_progress_k":"3", "strategy":"stable_advancing" },
   customModel: "",
+  subagents: { action:"off", models:{claude:"", codex:""}, customModels:{claude:"", codex:""}, effort:"", researcher:"" },
   effortTouched: false,      // set once the user picks an effort; suppresses the model radios'
                              // data-effort defaults so an explicit choice is never overwritten
   fieldValues: {}            // fieldValues[catId][label] = string
@@ -526,10 +577,44 @@ function applyInvocation(text, platform){
 
 function buildPrompt(){
   var cat = CAT_BY_ID[state.cat];
+  if(cat.command) return buildSubagentCommand();
   var params = effectiveParams(cat);
   var tpl = TEMPLATES[state.cat];
   var withParams = applyInvocation(applyParams(tpl, params), state.params["platform"]);
   return applyFields(withParams, deriveFields(tpl), state.fieldValues[state.cat]);
+}
+
+function subagentPlatform(){ return state.params.platform === "codex" ? "codex" : "claude"; }
+
+function subagentModel(){
+  var platform = subagentPlatform();
+  return state.subagents.models[platform] === "__custom__"
+    ? state.subagents.customModels[platform].trim() : state.subagents.models[platform];
+}
+
+function subagentCommandError(){
+  var s = state.subagents;
+  if(s.action !== "on") return "";
+  var platform = subagentPlatform(), model = subagentModel();
+  if(s.models[platform] === "__custom__" && !model) return "Enter a custom model ID, or choose another model option.";
+  if(model && !/^[A-Za-z0-9._:/-]+$/.test(model)) return "Model IDs cannot contain spaces or command punctuation.";
+  if(platform === "claude" && /^gpt-/.test(model)) return "Choose a Claude model, or switch the platform to Codex.";
+  if(platform === "codex" && /^(claude-|(?:opus|sonnet|haiku|fable)$)/.test(model)) return "Choose a Codex model, or switch the platform to Claude Code.";
+  if(!model && !s.effort && !s.researcher) return "Choose a model or an effort before turning this on.";
+  return "";
+}
+
+function buildSubagentCommand(){
+  if(subagentCommandError()) return "";
+  var s = state.subagents;
+  var args = [INVOKE[state.params.platform], "subagents", s.action];
+  if(s.action === "on"){
+    var model = subagentModel();
+    if(model) args.push(subagentPlatform() + "-model=" + model);
+    if(s.effort) args.push("effort=" + s.effort);
+    if(s.researcher) args.push("researcher=" + s.researcher);
+  }
+  return args.join(" ") + "\n";
 }
 
 // Only pass params whose header line exists for this category (reproduce = debug only;
@@ -641,6 +726,38 @@ function renderInitHintVisibility(){
     CAT_BY_ID[state.cat].initDefaults ? "" : "none";
 }
 
+function renderSubagentControls(){
+  var command = !!CAT_BY_ID[state.cat].command;
+  document.getElementById("fs-subagents").style.display = command ? "" : "none";
+  ["fs-model", "fs-effort", "fs-adhd", "fill-section", "btnReset"].forEach(function(id){
+    document.getElementById(id).style.display = command ? "none" : "";
+  });
+  document.getElementById("commandHint").style.display = command ? "" : "none";
+  document.getElementById("preview-title").textContent = command ? "3 · Command" : "4 · Prompt";
+  if(!command) return;
+  var s = state.subagents, platform = subagentPlatform();
+  var select = document.getElementById("subagent-model");
+  select.textContent = "";
+  select.add(new Option("Keep previous model", ""));
+  // Reuse the task picker's model list, while keeping this command's selections independent.
+  document.querySelectorAll('#seg-model input[name="model"]').forEach(function(input){
+    if(input.parentElement.classList.contains(platform === "codex" ? "claude-only" : "codex-only")) return;
+    var label = input.value === "inherit" ? "Inherit session model" : input.value === "__custom__" ? "Custom model ID…" : input.value;
+    select.add(new Option(label, input.value));
+  });
+  select.value = s.models[platform];
+  document.getElementById("subagent-custom-model").value = s.customModels[platform];
+  document.getElementById("subagent-custom-wrap").classList.toggle("show", s.models[platform] === "__custom__");
+  document.getElementById("subagent-options").style.display = s.action === "on" ? "" : "none";
+  document.getElementById("subagent-platform-note").textContent = s.action === "status"
+    ? "Check the saved selection without changing it."
+    : s.action === "off"
+      ? "Restore the previous worker settings. Start a new session to reload restored definitions; running agents keep their settings."
+      : platform === "codex"
+        ? "Codex receives a reminder to use these settings for new subagents. Loaded roles or full-history forks can prevent overrides. Worker definition changes require a new session; effort support depends on the model."
+        : "Claude model aliases apply to new spawns with no explicit model. Full IDs and effort apply only to repo-installed workers after a new session; built-in agents keep session effort. Effort support depends on the model.";
+}
+
 function renderAdvocacyVisibility(){
   var c = CAT_BY_ID[state.cat];
   document.getElementById("fs-advocacy").style.display =
@@ -652,6 +769,7 @@ function renderFields(){
   var cat = CAT_BY_ID[state.cat];
   var box = document.getElementById("fields");
   box.innerHTML = "";
+  if(cat.command) return;
   if(!state.fieldValues[cat.id]) state.fieldValues[cat.id] = {};
   deriveFields(TEMPLATES[cat.id]).forEach(function(slot){
     var wrap = document.createElement("div");
@@ -717,7 +835,12 @@ function renderFields(){
 
 
 function renderPreview(){
-  document.getElementById("preview").textContent = buildPrompt();
+  var error = CAT_BY_ID[state.cat].command ? subagentCommandError() : "";
+  document.getElementById("subagent-error").textContent = error;
+  document.getElementById("subagent-error").style.display = error ? "" : "none";
+  document.getElementById("btnCopy").disabled = !!error;
+  document.getElementById("btnDownload").disabled = !!error;
+  document.getElementById("preview").textContent = error ? "Choose valid settings to preview the command." : buildPrompt();
 }
 
 function renderAll(){
@@ -730,6 +853,7 @@ function renderAll(){
   renderOnlineResearcherEffortVisibility();
   renderAdvocacyVisibility();
   renderInitHintVisibility();
+  renderSubagentControls();
   renderFields();
   renderPreview();
 }
@@ -878,7 +1002,8 @@ function downloadMd(){
 async function liveSync(){
   if(location.protocol === "file:") return;     // file:// can't fetch siblings (opaque origin)
   var fetched = {};
-  await Promise.all(CATEGORIES.map(async function(c){
+  var templates = CATEGORIES.filter(function(c){ return !c.command; });
+  await Promise.all(templates.map(async function(c){
     try{
       var res = await fetch("request_template/" + c.id + "_request_template.md");
       if(res.ok){ fetched[c.id] = (await res.text()).replace(/\r\n/g, "\n"); }
@@ -886,7 +1011,7 @@ async function liveSync(){
   }));
   // All-or-nothing: only swap in live text once every template loaded, so the
   // store never becomes a stale live/bundled hybrid and the badge can't lie.
-  if(Object.keys(fetched).length !== CATEGORIES.length) return;
+  if(Object.keys(fetched).length !== templates.length) return;
   TEMPLATES = fetched;
   var b = document.getElementById("srcBadge");
   b.textContent = "live"; b.classList.add("live");
@@ -929,6 +1054,9 @@ function setEffort(val){
 // Browsers can restore radio/input state across a reload — derive state from the
 // actually-checked controls so the preview always matches what's on screen.
 function seedStateFromDom(){
+  state.subagents.action = document.querySelector('input[name="subagent-action"]:checked').value;
+  state.subagents.effort = document.getElementById("subagent-effort").value;
+  state.subagents.researcher = document.getElementById("subagent-researcher").value;
   state.params["platform"] = document.querySelector('input[name="platform"]:checked').value;
   state.params["reproduce"] = document.querySelector('input[name="reproduce"]:checked').value;
   state.params["simplify"] = document.querySelector('input[name="simplify"]:checked').value;
@@ -962,7 +1090,23 @@ function seedStateFromDom(){
 
 function wireParams(){
   document.getElementById("seg-platform").addEventListener("change", function(e){
-    state.params["platform"] = e.target.value; renderModelOptions(); renderPreview();
+    state.params["platform"] = e.target.value; renderModelOptions(); renderSubagentControls(); renderPreview();
+  });
+  document.getElementById("seg-subagent-action").addEventListener("change", function(e){
+    state.subagents.action = e.target.value; renderSubagentControls(); renderPreview();
+  });
+  document.getElementById("subagent-model").addEventListener("change", function(e){
+    state.subagents.models[subagentPlatform()] = e.target.value;
+    renderSubagentControls(); renderPreview();
+    if(e.target.value === "__custom__") document.getElementById("subagent-custom-model").focus();
+  });
+  document.getElementById("subagent-custom-model").addEventListener("input", function(e){
+    state.subagents.customModels[subagentPlatform()] = e.target.value; renderPreview();
+  });
+  ["effort", "researcher"].forEach(function(key){
+    document.getElementById("subagent-" + key).addEventListener("change", function(e){
+      state.subagents[key] = e.target.value; renderPreview();
+    });
   });
   document.getElementById("seg-reproduce").addEventListener("change", function(e){
     state.params["reproduce"] = e.target.value; renderPreview();

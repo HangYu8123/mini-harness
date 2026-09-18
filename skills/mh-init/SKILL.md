@@ -9,7 +9,7 @@ argument-hint: "[repo: path] [preserve: files or docs] [subagent_model: <id|inhe
 Read `.harness/harness.md` once per session (pack root: `harness/harness.md`), `.harness/repo_map.md`, and — when memory already exists — `.harness/reinitialize.md`. Documentation only: no source changes. One todo per stage.
 
 ## Contract
-- **Inputs:** target repo (default: current) · files/docs to preserve · worker dials `subagent_model:` / `subagent_effort:`. Absent dials use `claude-sonnet-4-6` (Claude Code) or `gpt-5.6-luna` (Codex), effort `max`; explicit `inherit` uses the session setting. Applied with the effort control (`mh.sh effort`, `worker_models.md`), recording requested/effective settings.
+- **Inputs:** target repo (default: current) · files/docs to preserve · worker dials `subagent_model:` / `subagent_effort:`. Resolve each absent dial separately: a corresponding standing `subagents` value when set (`mh.sh status` shows it), else `claude-sonnet-4-6` (Claude Code) or `gpt-5.6-luna` (Codex), effort `max`; explicit `inherit` uses the session setting. Applied with the effort control (`mh.sh effort`, `worker_models.md`), recording requested/effective settings.
 - **Produces:** [file structure] → [codebase_overview 1|2|3] → [codebase_overview] + [pipeline] → [symbol inventory] + [scripts overview draft] → `scripts_overview.md` → [verification] → [issues report] → `known_issues.md` §Auto-generated → `update_logs.md` seed → trajectory.
 - **Done when:** both overviews are written within budget, consistent with each other and with the code (verified by the isolated verifier), every memory file plus `repo_info/README.md` exists, and every file in [file structure] appears in at least one analyst's read list.
 

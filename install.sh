@@ -96,7 +96,7 @@ prune_empty() { for d in "$@"; do [ -d "$d" ] && find "$d" -depth -type d -empty
 if $UNINSTALL; then
   [ -f "$MANIFEST" ] || { echo "nothing to uninstall: no $MANIFEST" >&2; exit 1; }
   while IFS=$'\t' read -r h p; do [ -n "$p" ] && remove_owned "$h" "$p"; done < "$MANIFEST"
-  rm -f "$MANIFEST" "$H/state/active"
+  rm -f "$MANIFEST" "$H/state/active" "$H/state/subagents" "$H/state/subagents_saved"
   AG="$TARGET/AGENTS.md"
   if [ -f "$AG" ] && grep -Fq "$MARK_BEGIN" "$AG"; then
     python3 - "$AG" <<'PY'
@@ -175,7 +175,7 @@ fi
 if $HOOKS; then
   hooks_edit "$TARGET/.claude/settings.json" "$PACK/hooks/claude-route.snippet.json" add
   hooks_edit "$TARGET/.codex/hooks.json" "$PACK/hooks/codex-route.snippet.json" add
-  say "installed routing hook (.claude/settings.json, .codex/hooks.json) — inert until /mini-harness on; Codex: trust it once with /hooks"
+  say "installed routing hook (.claude/settings.json, .codex/hooks.json) — inert until /mini-harness on or subagents on; Codex: trust it once with /hooks"
 fi
 if $GUARD; then
   hooks_edit "$TARGET/.claude/settings.json" "$PACK/hooks/claude-settings.snippet.json" add
@@ -190,6 +190,15 @@ if [ -f "$MANIFEST" ]; then
   done < "$MANIFEST"
 fi
 sort -t$'\t' -k2 -u "$NEWM" > "$MANIFEST"
+# A re-install must not leave the standing toggle's state and worker definitions disagreeing.
+if [ -f "$H/state/subagents" ]; then
+  SUB_ARGS=()
+  while IFS='=' read -r key value; do
+    case "$key" in claude_model) SUB_ARGS+=("claude-model=$value");; codex_model) SUB_ARGS+=("codex-model=$value");;
+      effort|researcher) SUB_ARGS+=("$key=$value");; esac
+  done < "$H/state/subagents"
+  (cd "$TARGET" && bash .agents/skills/mini-harness/mh.sh subagents on "${SUB_ARGS[@]}")
+fi
 if [ -s "$SKIPPED" ]; then say ""; say "left alone ($(wc -l < "$SKIPPED" | tr -d ' ') collisions):"; sed 's/^/  /' "$SKIPPED"; fi
 say ""
 say "Done ($(wc -l < "$MANIFEST" | tr -d ' ') files owned, listed in .harness/installed.tsv). Next: in the repo, run  /mini-harness on   (Codex: trust the hook with /hooks, then \$mini-harness on), then  /mini-harness init  to build the memory."

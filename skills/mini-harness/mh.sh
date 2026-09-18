@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mini-harness workspace helper — on | off | status | doctor | traj <task> | effort <level|save|restore|reset> …
+# mini-harness workspace helper — on | off | status | doctor | traj <task> | effort <level|save|restore|reset> … | subagents [on …|off]
 #
 # Original request: activation must bootstrap the writable workspace layout even
 # for a plugin-only install, and on/off/status/hooks must agree on one root rule.
@@ -51,34 +51,88 @@ edit_claude() { local f=$1 m=$2 e=$3 t; t=$(mktemp)
     /^---$/ && fm<2 { fm++; if(fm==2){ if(m!="" && !sm) print "model: \"" m "\""; if(e!="" && e!="inherit" && !se) print "effort: " e }; print; next }
     fm==1 && /^model:/ { sm=1; if(m!=""){ print "model: \"" m "\""; next } }
     fm==1 && /^effort:/ { se=1; if(e!=""){ if(e!="inherit") print "effort: " e; next } }
-    { print }' "$f" > "$t" && cat "$t" > "$f"; rm -f "$t"; }
+    { print }' "$f" > "$t" && cat "$t" > "$f"; local rc=$?; rm -f "$t"; return "$rc"; }
 edit_codex() { local f=$1 m=$2 e=$3 t hm he; t=$(mktemp)
-  hm=$(grep -c '^model = ' "$f"); he=$(grep -c '^model_reasoning_effort = ' "$f")
+  hm=$(awk '/^developer_instructions = /{exit} /^model = /{n++} END{print n+0}' "$f")
+  he=$(awk '/^developer_instructions = /{exit} /^model_reasoning_effort = /{n++} END{print n+0}' "$f")
   awk -v m="$m" -v e="$e" -v hm="$hm" -v he="$he" '
+    /^developer_instructions = / { body=1 }
+    body { print; next }
     /^model = / { if(m!=""){ if(m!="inherit") print "model = \"" m "\""; next } }
     /^model_reasoning_effort = / { if(e!=""){ if(e!="inherit") print "model_reasoning_effort = \"" e "\""; next } }
     { print }
-    /^sandbox_mode = / { if(m!="" && m!="inherit" && hm==0) print "model = \"" m "\""; if(e!="" && e!="inherit" && he==0) print "model_reasoning_effort = \"" e "\"" }' "$f" > "$t" && cat "$t" > "$f"; rm -f "$t"; }
+    /^sandbox_mode = / { if(m!="" && m!="inherit" && hm==0) print "model = \"" m "\""; if(e!="" && e!="inherit" && he==0) print "model_reasoning_effort = \"" e "\"" }' "$f" > "$t" && cat "$t" > "$f"; local rc=$?; rm -f "$t"; return "$rc"; }
 # Worker definition dirs: the repo's own, else the plugin's agents/ for Claude Code; Codex only in the repo.
 worker_dirs() { cdir=""; ls "$ROOT/.claude/agents"/*.md >/dev/null 2>&1 && cdir="$ROOT/.claude/agents"
-  [ -z "$cdir" ] && [ -n "$PACK" ] && ls "$PACK/agents"/*.md >/dev/null 2>&1 && cdir="$PACK/agents"   # plugin install: the plugin's own agents/
+  [ "${1:-}" != local ] && [ -z "$cdir" ] && [ -n "$PACK" ] && ls "$PACK/agents"/*.md >/dev/null 2>&1 && cdir="$PACK/agents"   # legacy effort command: the plugin's own agents/
   xdir=""; ls "$ROOT/.codex/agents"/*.toml >/dev/null 2>&1 && xdir="$ROOT/.codex/agents"
+  if [ "${1:-}" = local ]; then
+    # A repo toggle must not rewrite a shared plugin (including an external directory symlink).
+    local real_root real_dir; real_root=$(cd "$ROOT" && pwd -P)
+    if [ -n "$cdir" ]; then real_dir=$(cd "$cdir" && pwd -P); case "$real_dir" in "$real_root"/*) ;; *) cdir="";; esac; fi
+    if [ -n "$xdir" ]; then real_dir=$(cd "$xdir" && pwd -P); case "$real_dir" in "$real_root"/*) ;; *) xdir="";; esac; fi
+  fi
   [ -n "$cdir$xdir" ] || { echo "mh.sh effort: no worker definitions under $ROOT/.claude/agents, $ROOT/.codex/agents, or the pack — run install.sh or /mini-harness on" >&2; return 1; }; }
 # Effective values as written in a definition; a missing line means inherit.
-claude_val() { local v; v=$(sed -n "s/^$2: *\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" "$1" | head -n1); printf '%s' "${v:-inherit}"; }
-codex_val() { local v; v=$(sed -n "s/^$2 = \"\([^\"]*\)\"$/\1/p" "$1" | head -n1); printf '%s' "${v:-inherit}"; }
+claude_val() { local v; v=$(awk '/^---$/{fm++; next} fm==1{print}' "$1" | sed -n "s/^$2: *\"\{0,1\}\([^\"]*\)\"\{0,1\}$/\1/p" | head -n1); printf '%s' "${v:-inherit}"; }
+codex_val() { local v; v=$(awk '/^developer_instructions = /{exit} {print}' "$1" | sed -n "s/^$2 = \"\([^\"]*\)\"$/\1/p" | head -n1); printf '%s' "${v:-inherit}"; }
 print_effective() { [ -n "$1" ] && [ -f "$1/implementer.md" ] && echo "effective claude · $(grep -E '^(model|effort):' "$1/implementer.md" | tr '\n' ' ')· researcher $(grep -E '^effort:' "$1/online-researcher.md" 2>/dev/null | tr '\n' ' ')"
   [ -n "$2" ] && [ -f "$2/implementer.toml" ] && echo "effective codex · $(grep -E '^(model|model_reasoning_effort) = ' "$2/implementer.toml" | tr '\n' ' ')· researcher $(grep -E '^model_reasoning_effort = ' "$2/online-researcher.toml" 2>/dev/null | tr '\n' ' ')"; return 0; }
 # Rewrite every generated definition: $1/$2 = Claude model/effort, $3/$4 = Codex model/effort, $5/$6 = researcher efforts (Claude, Codex).
 apply_settings() { local cm=$1 lvl=$2 xm=$3 xlvl=$4 rlvl=$5 xrlvl=$6 f e; nc=0; nx=0
-  for f in ${cdir:+"$cdir"/*.md}; do [ -f "$f" ] && grep -q "$MARKER" "$f" || continue
+  for f in ${cdir:+"$cdir"/*.md}; do [ -f "$f" ] && [ ! -L "$f" ] && grep -q "$MARKER" "$f" || continue
     e=$lvl; [ "$(basename "$f" .md)" = online-researcher ] && e=$rlvl
-    edit_claude "$f" "$cm" "$e"; nc=$((nc+1)); case "$f" in "$ROOT"/*) refresh_manifest "${f#"$ROOT"/}";; esac; done
-  for f in ${xdir:+"$xdir"/*.toml}; do [ -f "$f" ] && grep -q "$MARKER" "$f" || continue
+    edit_worker claude "$f" "$cm" "$e" || return 1; nc=$((nc+1)); done
+  for f in ${xdir:+"$xdir"/*.toml}; do [ -f "$f" ] && [ ! -L "$f" ] && grep -q "$MARKER" "$f" || continue
     e=$xlvl; [ "$(basename "$f" .toml)" = online-researcher ] && e=$xrlvl
-    edit_codex "$f" "$xm" "$e"; nx=$((nx+1)); refresh_manifest "${f#"$ROOT"/}"; done; }
+    edit_worker codex "$f" "$xm" "$e" || return 1; nx=$((nx+1)); done; }
 refresh_manifest() { local r=$1 h; [ -f "$H/installed.tsv" ] && grep -q "	$r\$" "$H/installed.tsv" || return 0   # keep the rewritten file "owned and unmodified"
   h=$(hash_of "$ROOT/$r"); awk -F'\t' -v OFS='\t' -v p="$r" -v h="$h" '$2==p{$1=h}1' "$H/installed.tsv" > "$H/installed.tsv.tmp" && mv "$H/installed.tsv.tmp" "$H/installed.tsv"; }
+edit_worker() { local platform=$1 f=$2 rel recorded="" owned=false; rel=${f#"$ROOT"/}
+  [ -f "$H/installed.tsv" ] && recorded=$(awk -F'\t' -v p="$rel" '$2==p{print $1; exit}' "$H/installed.tsv")
+  [ -n "$recorded" ] && [ "$recorded" = "$(hash_of "$f")" ] && owned=true
+  "edit_$platform" "$f" "$3" "$4" || return 1
+  # Never mark pre-existing user edits as installer-owned just because a setting changed.
+  if $owned; then refresh_manifest "$rel" || return 1; fi; return 0; }
+# Snapshot the definitions' current settings to $1 (an existing snapshot is kept: returns 1) / put $1 back and remove it (none: returns 1).
+snap_val() { sed -n "s/^$2=//p" "$1" | head -n1; }
+save_settings() { local f; [ -f "$1" ] && return 1; mkdir -p "$H/state" || return 1
+  { echo "saved=$(date '+%Y-%m-%d %H:%M')"
+    [ -n "$cdir" ] && [ -f "$cdir/implementer.md" ] && { echo "claude_model=$(claude_val "$cdir/implementer.md" model)"; echo "claude_effort=$(claude_val "$cdir/implementer.md" effort)"; echo "claude_researcher=$(claude_val "$cdir/online-researcher.md" effort)"; }
+    [ -n "$xdir" ] && [ -f "$xdir/implementer.toml" ] && { echo "codex_model=$(codex_val "$xdir/implementer.toml" model)"; echo "codex_effort=$(codex_val "$xdir/implementer.toml" model_reasoning_effort)"; echo "codex_researcher=$(codex_val "$xdir/online-researcher.toml" model_reasoning_effort)"; }
+    # Keep every worker's own settings; the implementer is not a template for the other roles.
+    echo "format=2"
+    for f in ${cdir:+"$cdir"/*.md}; do [ -f "$f" ] && [ ! -L "$f" ] && grep -q "$MARKER" "$f" || continue
+      printf 'claude\t%s\t%s\t%s\n' "${f##*/}" "$(claude_val "$f" model)" "$(claude_val "$f" effort)"; done
+    for f in ${xdir:+"$xdir"/*.toml}; do [ -f "$f" ] && [ ! -L "$f" ] && grep -q "$MARKER" "$f" || continue
+      printf 'codex\t%s\t%s\t%s\n' "${f##*/}" "$(codex_val "$f" model)" "$(codex_val "$f" model_reasoning_effort)"; done
+  } > "$1" || return 1; return 0; }
+restore_settings() { [ -f "$1" ] || return 1
+  if [ "$(snap_val "$1" format)" = 2 ]; then
+    local platform f m e; nc=0; nx=0
+    while IFS=$'\t' read -r platform f m e; do
+      case "$platform" in claude|codex) ;; *) continue;; esac
+      # Bind by role filename, not the shell's spelling of the repo path (e.g. /var vs /private/var).
+      case "$platform" in
+        claude) [ -n "$cdir" ] || continue; f="$cdir/${f##*/}";;
+        codex) [ -n "$xdir" ] || continue; f="$xdir/${f##*/}";;
+      esac
+      [ -f "$f" ] && [ ! -L "$f" ] && grep -q "$MARKER" "$f" || continue
+      case "$platform:$f" in
+        claude:"$cdir"/*.md) edit_worker claude "$f" "$m" "$e" || return 1; nc=$((nc+1));;
+        codex:"$xdir"/*.toml) edit_worker codex "$f" "$m" "$e" || return 1; nx=$((nx+1));;
+        *) continue;;
+      esac
+    done < "$1"
+  else
+    apply_settings "$(snap_val "$1" claude_model)" "$(snap_val "$1" claude_effort)" "$(snap_val "$1" codex_model)" "$(snap_val "$1" codex_effort)" "$(snap_val "$1" claude_researcher)" "$(snap_val "$1" codex_researcher)" || return 1
+  fi
+  rm -f "$1"; }
+sub_line() { [ -f "$H/state/subagents" ] && echo "subagents on · since $(snap_val "$H/state/subagents" since) · $(grep -v '^since=' "$H/state/subagents" | tr '_\n' '- ' | sed 's/ $//')" || echo "subagents off (default) — every subagent runs as the platform decides"; }
+# Argument checks shared by `effort` and `subagents` ($1 = command name for the message).
+check_levels() { local c=$1 l; shift; for l in "$@"; do case "$l" in ""|low|medium|high|xhigh|max|inherit) ;; *) echo "mh.sh $c: unknown level '$l' (low|medium|high|xhigh|max|inherit)" >&2; return 1;; esac; done; }
+check_models() { case "$2" in gpt-*) echo "mh.sh $1: '$2' is a Codex model — use codex-model=" >&2; return 1;; *[!A-Za-z0-9._:/-]*) echo "mh.sh $1: bad model id '$2'" >&2; return 1;; esac
+  case "$3" in claude-*|opus|sonnet|haiku|fable) echo "mh.sh $1: '$3' is a Claude model — use claude-model=" >&2; return 1;; *[!A-Za-z0-9._:/-]*) echo "mh.sh $1: bad model id '$3'" >&2; return 1;; esac; }
 
 cmd=${1:-status}
 case "$cmd" in
@@ -100,11 +154,13 @@ case "$cmd" in
     cdef="$ROOT/.claude/agents"; [ -f "$cdef/implementer.md" ] || cdef="${PACK:+$PACK/agents}"   # plugin install: the plugin's own agents/
     if [ -n "$cdef" ] && [ -f "$cdef/implementer.md" ]; then echo "effective claude · $(grep -E '^(model|effort):' "$cdef/implementer.md" | tr '\n' ' ')· researcher $(grep -E '^effort:' "$cdef/online-researcher.md" 2>/dev/null | tr '\n' ' ')($cdef; change with: effort; read at session start)"; fi
     if [ -f "$ROOT/.codex/agents/implementer.toml" ]; then echo "effective codex · $(grep -E '^(model|model_reasoning_effort) = ' "$ROOT/.codex/agents/implementer.toml" | tr '\n' ' ')· researcher $(grep -E '^model_reasoning_effort = ' "$ROOT/.codex/agents/online-researcher.toml" 2>/dev/null | tr '\n' ' ')(.codex/agents)"; fi
+    sub_line
     [ "$cmd" = status ] && exit 0
     for f in $PROTO_FILES; do [ -f "$H/$f" ] || bad "missing $H/$f"; done
     [ -f "$H/hooks/route.sh" ] && { [ -x "$H/hooks/route.sh" ] && ok "standalone route hook executable" || bad "$H/hooks/route.sh is not executable"; }
     if [ -f "$ROOT/.claude/settings.json" ] && grep -q 'route.sh' "$ROOT/.claude/settings.json"; then
       grep -q '\\"${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh\\"' "$ROOT/.claude/settings.json" && ok "Claude hook path is quoted" || bad "Claude hook path unquoted — re-run install.sh (F3)"
+      grep -q 'Agent|Task' "$ROOT/.claude/settings.json" && ok "Claude Agent hook wired (subagents control)" || warn "no Agent hook in .claude/settings.json — re-run install.sh so 'subagents on' reaches the platform's own subagents"
     else warn "no standalone Claude hook in .claude/settings.json (fine for a plugin install)"; fi
     if [ -f "$ROOT/.codex/hooks.json" ] && grep -q 'route.sh' "$ROOT/.codex/hooks.json"; then
       grep -q 'dirname' "$ROOT/.codex/hooks.json" && ok "Codex hook resolves the root itself (trust it once with /hooks)" || bad "Codex hook uses a cwd-relative path — re-run install.sh (F3)"
@@ -132,20 +188,12 @@ case "$cmd" in
     case "$lvl" in save|restore) [ $# -eq 0 ] || { echo "mh.sh effort $lvl takes no arguments" >&2; exit 2; };; esac
     worker_dirs || exit 1
     if [ "$lvl" = save ]; then
-      if [ -f "$SAVED" ]; then echo "mini-harness effort · snapshot kept ($SAVED, $(sed -n 's/^saved=//p' "$SAVED")) — restore it before saving another"; exit 0; fi
-      mkdir -p "$H/state"
-      { echo "saved=$(date '+%Y-%m-%d %H:%M')"
-        [ -n "$cdir" ] && [ -f "$cdir/implementer.md" ] && { echo "claude_model=$(claude_val "$cdir/implementer.md" model)"; echo "claude_effort=$(claude_val "$cdir/implementer.md" effort)"; echo "claude_researcher=$(claude_val "$cdir/online-researcher.md" effort)"; }
-        [ -n "$xdir" ] && [ -f "$xdir/implementer.toml" ] && { echo "codex_model=$(codex_val "$xdir/implementer.toml" model)"; echo "codex_effort=$(codex_val "$xdir/implementer.toml" model_reasoning_effort)"; echo "codex_researcher=$(codex_val "$xdir/online-researcher.toml" model_reasoning_effort)"; }
-      } > "$SAVED"
+      save_settings "$SAVED" || { echo "mini-harness effort · snapshot kept ($SAVED, $(snap_val "$SAVED" saved)) — restore it before saving another"; exit 0; }
       echo "mini-harness effort · saved current settings to $SAVED (restore with: effort restore)"; print_effective "$cdir" "$xdir"; exit 0
     fi
     if [ "$lvl" = restore ]; then
-      [ -f "$SAVED" ] || { echo "mini-harness effort · no snapshot ($SAVED) — definitions unchanged"; print_effective "$cdir" "$xdir"; exit 0; }
-      sv() { sed -n "s/^$1=//p" "$SAVED" | head -n1; }
-      when=$(sv saved)
-      apply_settings "$(sv claude_model)" "$(sv claude_effort)" "$(sv codex_model)" "$(sv codex_effort)" "$(sv claude_researcher)" "$(sv codex_researcher)"
-      rm -f "$SAVED"
+      when=$(snap_val "$SAVED" saved 2>/dev/null)
+      restore_settings "$SAVED" || { echo "mini-harness effort · no snapshot ($SAVED) — definitions unchanged"; print_effective "$cdir" "$xdir"; exit 0; }
       echo "mini-harness effort · restored the settings saved $when · rewrote $nc Claude Code definition(s)${cdir:+ in $cdir} · $nx Codex definition(s)${xdir:+ in $xdir}"
       print_effective "$cdir" "$xdir"; echo "note: a running session may not reload definitions — check each worker's launch metadata and record requested vs effective"; exit 0
     fi
@@ -153,13 +201,62 @@ case "$cmd" in
     for a in "$@"; do case "$a" in
       researcher=*) rlvl=${a#*=};; claude-model=*) cm=${a#*=};; codex-model=*) xm=${a#*=};; model=*) cm=${a#*=}; xm=${a#*=};;
       *) echo "mh.sh effort: unknown argument '$a'" >&2; exit 2;; esac; done
-    for l in "$lvl" "$rlvl"; do case "$l" in ""|low|medium|high|xhigh|max|inherit) ;; *) echo "mh.sh effort: unknown level '$l' (low|medium|high|xhigh|max|inherit|reset|save|restore)" >&2; exit 2;; esac; done
-    case "$cm" in gpt-*) echo "mh.sh effort: '$cm' is a Codex model — use codex-model=" >&2; exit 2;; *[!A-Za-z0-9._:/-]*) echo "mh.sh effort: bad model id '$cm'" >&2; exit 2;; esac
-    case "$xm" in claude-*|opus|sonnet|haiku|fable) echo "mh.sh effort: '$xm' is a Claude model — use claude-model=" >&2; exit 2;; *[!A-Za-z0-9._:/-]*) echo "mh.sh effort: bad model id '$xm'" >&2; exit 2;; esac
-    apply_settings "$cm" "$lvl" "$xm" "$lvl" "$rlvl" "$rlvl"
+    check_levels effort "$lvl" "$rlvl" && check_models effort "$cm" "$xm" || exit 2
+    apply_settings "$cm" "$lvl" "$xm" "$lvl" "$rlvl" "$rlvl" || exit 1
     echo "mini-harness effort · rewrote $nc Claude Code definition(s)${cdir:+ in $cdir} · $nx Codex definition(s)${xdir:+ in $xdir}"
     print_effective "$cdir" "$xdir"
     echo "note: a running session may not reload definitions — check each worker's launch metadata and record requested vs effective"
+    exit 0;;
+  subagents)
+    # subagents [status] | on [model=<id>] [claude-model=<id>] [codex-model=<id>] [effort=<level>] [researcher=<level>] | off
+    # The standing subagent control: off by default, independent of on/off, and it touches nothing but subagent model
+    # and effort. `on` writes state/subagents — hooks/route.sh reads it: on Claude Code it fills in the Agent tool's
+    # `model` for a spawn that names none, on Codex it reminds the main agent of the spawn arguments — and puts the
+    # settings into the generated worker definitions (the only native effort control on Claude Code; on Codex a
+    # definition wins over spawn arguments). `off` removes the file and puts back the definitions as they were before `on`.
+    sub=${2:-status}; shift; [ $# -gt 0 ] && shift
+    S="$H/state/subagents"; SS="$H/state/subagents_saved"
+    case "$sub" in
+      status) [ $# -eq 0 ] || { echo "mh.sh subagents status takes no arguments" >&2; exit 2; }; sub_line; exit 0;;
+      off) [ $# -eq 0 ] || { echo "mh.sh subagents off takes no arguments" >&2; exit 2; }
+        worker_dirs local 2>/dev/null || { cdir=""; xdir=""; }
+        if [ -f "$SS" ]; then
+          restore_settings "$SS" || exit 1
+          echo "mini-harness subagents off · worker definitions put back as they were ($nc Claude Code · $nx Codex)"
+        else echo "mini-harness subagents off"; fi
+        rm -f "$S" || exit 1
+        print_effective "$cdir" "$xdir"; echo "note: restored definitions take effect in a new session; running subagents keep their settings"; exit 0;;
+      on) ;;
+      *) echo "usage: mh.sh subagents [status] | on [model=<id>] [claude-model=<id>] [codex-model=<id>] [effort=<low|medium|high|xhigh|max|inherit>] [researcher=<level>] | off" >&2; exit 2;;
+    esac
+    cm=""; xm=""; lvl=""; rlvl=""
+    for a in "$@"; do
+      case "$a" in *=) echo "mh.sh subagents: empty value in '$a'" >&2; exit 2;; esac
+      case "$a" in
+      claude-model=*) cm=${a#*=};; codex-model=*) xm=${a#*=};; effort=*) lvl=${a#*=};; researcher=*) rlvl=${a#*=};;
+      model=*) v=${a#*=}; case "$v" in claude-*|opus|sonnet|haiku|fable) cm=$v;; gpt-*) xm=$v;; *) cm=$v; xm=$v;; esac;;   # a platform's own id goes to that platform only
+      *) echo "mh.sh subagents: unknown argument '$a'" >&2; exit 2;; esac; done
+    [ -n "$cm$xm$lvl$rlvl" ] || { echo "mh.sh subagents on: name at least one of model= · claude-model= · codex-model= · effort= · researcher=" >&2; exit 2; }
+    check_levels subagents "$lvl" "$rlvl" && check_models subagents "$cm" "$xm" || exit 2
+    rlvl=${rlvl:-$lvl}   # one effort for every worker unless the researcher gets its own
+    worker_dirs local 2>/dev/null || { cdir=""; xdir=""; }   # the hook still serves native subagents without repo definitions
+    if [ -f "$SS" ]; then restore_settings "$SS" >/dev/null || exit 1; fi   # repeated `on` starts from the user's own settings
+    save_settings "$SS" || exit 1
+    apply_settings "$cm" "$lvl" "$xm" "$lvl" "$rlvl" "$rlvl" || exit 1
+    { echo "since=$(date '+%Y-%m-%d %H:%M')"; [ -n "$cm" ] && echo "claude_model=$cm"; [ -n "$xm" ] && echo "codex_model=$xm"
+      [ -n "$lvl" ] && echo "effort=$lvl"; [ -n "$rlvl" ] && echo "researcher=$rlvl"; :; } > "$S.tmp" && mv "$S.tmp" "$S" || exit 1
+    echo "mini-harness $(sub_line) · rewrote $nc Claude Code · $nx Codex worker definition(s)"
+    print_effective "$cdir" "$xdir"
+    case "$cm" in ""|inherit) ;;
+      opus|sonnet|haiku|fable) { grep -q 'Agent|Task' "$ROOT/.claude/settings.json" 2>/dev/null || grep -q 'Agent|Task' "${PACK:-/nonexistent}/hooks/hooks.json" 2>/dev/null; } \
+        && echo "claude   every Agent spawn that names no model gets '$cm' from now on (PreToolUse hook; an explicit model on a spawn still wins)" \
+        || echo "warn     no Agent hook in $ROOT/.claude/settings.json — re-run install.sh (or use the plugin) so the platform's own subagents get '$cm'";;
+      *) echo "claude   '$cm' is a full id: it reaches the mini-harness workers through their definitions; the Agent tool's per-spawn model takes aliases only (opus|sonnet|haiku|fable), so the platform's own subagents keep their model";; esac
+    [ -n "$lvl$rlvl" ] && echo "claude   effort reaches repo-installed workers from the next session; built-in subagents keep their session effort (no per-spawn effort control)"
+    [ -z "$cdir" ] && [ -n "$cm$lvl$rlvl" ] && echo "note     no repo-local Claude definitions: shared plugin definitions were left alone; install.sh adds local workers for effort/full-ID control"
+    [ -n "$xm$lvl$rlvl" ] && echo "codex    the prompt hook requests model / reasoning_effort for new spawns; repo worker definitions carry the same values from the next session"
+    echo "note     requested levels must be supported by the selected model; verify launch metadata for effective settings"
+    echo "note     nothing else changes; off again with: subagents off"
     exit 0;;
   traj)
     task=${2:?usage: mh.sh traj <task>}; mkdir -p "$H/exec_traj"
@@ -174,5 +271,5 @@ case "$cmd" in
         printf '%s\n' "$f"; exit 0
       fi
     done; echo "mini-harness: could not create a unique trajectory file" >&2; exit 1;;
-  *) echo "usage: mh.sh on | off | status | doctor | traj <task> | effort <level|reset|save|restore> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]" >&2; exit 2;;
+  *) echo "usage: mh.sh on | off | status | doctor | traj <task> | effort <level|reset|save|restore> [researcher=<level>] [claude-model=<id>] [codex-model=<id>] | subagents [status] | subagents on [model=<id>] [effort=<level>] … | subagents off" >&2; exit 2;;
 esac

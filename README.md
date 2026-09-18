@@ -133,6 +133,7 @@ Model selections go through native launch controls. Claude supports aliases and 
 | `/mini-harness init` | Build the repo memory in `.harness/repo_info/`. Run once per repo, again to re-initialize. |
 | `/mini-harness doctor` | Check files, hook paths, and ownership. Prints `ok` lines or what is wrong. |
 | `/mini-harness effort <level\|save\|restore\|reset> [researcher=<level>] [claude-model=<id>] [codex-model=<id>]` | Set the workers' effort and model in the installed definitions, read at session start; `save` / `restore` bracket a temporary change (init restores your settings when it finishes). |
+| `/mini-harness subagents on [model=<id>] [effort=<level>] …` · `subagents off` | Cheap subagents for massive browsing or file reading. Off by default; while on it changes only subagent model and effort, with or without `/mini-harness on`. See below. |
 | `/mini-harness wiki` | Fold unconsolidated trajectories into `harness_effect.md`: what helped, what hurt, one proposed change at a time. |
 | `/mini-harness loop …` | Repeat a request until a verifiable check passes. |
 | `/mini-harness gui` | Open the request builder. |
@@ -140,11 +141,32 @@ Model selections go through native launch controls. Claude supports aliases and 
 
 Codex: `$mini-harness …`. Plugin install on Claude Code: `/mini-harness:mini-harness …`. Direct skills: `/mh-init`, `/mh-loop`, `/mh-wiki`, `/i-have-adhd`.
 
+### Cheap subagents, on demand
+
+When a job is mostly reading — a big crawl, hundreds of files — you may want the subagents on a cheap model at a high effort, or many of them at a low one, without paying your main model's price for each.
+
+```text
+$mini-harness subagents on codex-model=gpt-5.6-luna effort=max
+$mini-harness subagents on codex-model=gpt-5.6-luna effort=low
+$mini-harness subagents off
+```
+
+Claude Code uses `/mini-harness subagents …`, for example `on claude-model=haiku`. Add `effort=<level>` for repo-installed workers when that model supports it. `subagents` without arguments shows the current selection; `researcher=<level>` selects a separate effort for the online researcher. Request any fan-out in your task; changing effort never adds agents by itself.
+
+It is off by default and separate from `/mini-harness on`. While on, it changes only subagent model and effort: whether, when, and how many subagents run stays the platform's call, and your main session is untouched.
+
+| | Model | Effort |
+|---|---|---|
+| Claude Code | A hook supplies your alias (`haiku` · `sonnet` · `opus` · `fable`) for new Agent calls with no model, including built-ins. Forks and resumes pass through. Full IDs reach repo-installed workers through definitions. | Repo-installed MiHa workers get it through their definitions from the next session. Built-ins keep the session effort: the Agent tool has no per-spawn effort parameter. [Claude controls](https://code.claude.com/docs/en/sub-agents#supported-frontmatter-fields). |
+| Codex | A prompt reminder requests the native spawn arguments. `codex-model=<id>` sets it. | Same reminder, plus repo worker definitions. Loaded role settings can override spawn arguments. [Codex precedence](https://developers.openai.com/codex/subagents#custom-agents). |
+
+Explicit request settings take precedence where native controls allow; the toggle never swaps roles or changes context to force an override. Requested effort levels depend on model support. Definition changes, including restoration with `off`, require a new session; already running agents are unchanged. Shared plugin definitions and user-authored agents are left alone. Re-run `install.sh` for older standalone installs to wire the Agent hook (`/mini-harness doctor` checks it).
+
 ## Request builder
 
 Two files in the pack root are a small GUI for writing a MiHa request without typing the dials by hand.
 
-- `harness_gui.html` is the page: nine tabs, one per task type, dials as buttons, one text box per field, and a live preview of the prompt. It is self-contained; double-click it to use it offline. It never writes to disk.
+- `harness_gui.html` is the page: nine task tabs plus a **Subagents** tab, dials as buttons, one text box per field, and a live preview. Subagents builds Turn on, Turn off, or Check status commands with independent model/effort selections; it defaults to off and never applies settings itself. The page is self-contained; double-click it to use it offline. It never writes to disk.
 - `harness_gui.py` is the launcher: `python3 harness_gui.py` serves the page locally, reloads templates live from `request_template/`, and adds a Browse button that inserts real repo-relative paths.
 
 Pick the platform (it sets the invocation token), pick the task tab, flip the dials, fill the fields, copy, paste. It protects you from a misspelled dial, a dial that does not exist for that task, a wrong token for the platform, and out-of-date init defaults.
