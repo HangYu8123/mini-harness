@@ -66,6 +66,20 @@ class ModelGenerationTests(unittest.TestCase):
             self.run_sync(*args, success=False)
             self.assertEqual((self.files("agents"), self.files(".codex/agents")), before)
 
+    def test_only_the_advisors_start_without_project_instructions_on_claude(self):
+        advisors = {"online-researcher.md", "diversifier.md", "devils-advocate.md"}
+        for name, text in self.files("agents").items():
+            front = text.decode().split("---")[1].splitlines()
+            self.assertEqual("omitClaudeMd: true" in front, name in advisors, name)
+        for text in self.files(".codex/agents").values():
+            self.assertNotIn("omitClaudeMd", text.decode())
+        source = self.pack / "agent_sources/diversifier.agent.md"
+        source.write_text(source.read_text(encoding="utf-8").replace(
+            "omitClaudeMd: true", "omitClaudeMd: yes"), encoding="utf-8")
+        before = self.files("agents")
+        self.run_sync(success=False)
+        self.assertEqual(self.files("agents"), before)
+
     def test_custom_id_preserved_and_inherit_removes_pin(self):
         custom = "provider/example-model:release-1"
         self.run_sync("--codex-model", custom)

@@ -241,11 +241,12 @@
       </fieldset>
 
       <fieldset id="fs-advocacy" style="display:none">
-        <!-- Three-way dials resolved by harness.md §5: `auto` (default) applies the size gate —
-             a small request that only concerns this repo spawns no advisor, a small request that
-             hinges on an external fact spawns the online researcher only, anything else all three;
-             `on` / `off` force. In the loop family the exit-gater Devils Advocate is loop control
-             and ignores devils_advocate. -->
+        <!-- Three-way dials resolved by harness.md §5: `auto` (default) runs each advisor only on
+             a signal the route hook injects — the online researcher on research words in the prompt
+             or the 2nd version-drift error in a request, the diversifier on alternatives words, the
+             devils advocate on the 3rd version-drift error; one fact with a known source is fetched
+             directly; no signal means no advisor; `on` / `off` force. In the loop
+             family the exit-gater Devils Advocate is loop control and ignores devils_advocate. -->
         <legend>analysis subagents</legend>
         <div class="analysisrow">
           <div class="analysisgrp" id="grp-diversifier">
@@ -257,7 +258,7 @@
             </div>
           </div>
           <div class="analysisgrp">
-            <div class="sublegend">devils_advocate <span style="font-weight:400">(challenge · default auto)</span></div>
+            <div class="sublegend">devils_advocate <span style="font-weight:400">(routing check · default auto)</span></div>
             <div class="seg" id="seg-devils" role="radiogroup" aria-label="devils_advocate">
               <label><input type="radio" name="devils" value="off"><span>off</span></label>
               <label><input type="radio" name="devils" value="auto" checked><span>auto</span></label>

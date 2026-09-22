@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "SessionEnd": [
+      { "hooks": [ { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/.harness/hooks/consolidate.sh\"", "timeout": 10, "statusMessage": "mini-harness consolidate" } ] }
+    ]
+  }
+}

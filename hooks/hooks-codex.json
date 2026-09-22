@@ -5,6 +5,13 @@
     ],
     "UserPromptSubmit": [
       { "hooks": [ { "type": "command", "command": "\"${PLUGIN_ROOT}\"/hooks/route.sh", "timeout": 5 } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "Bash",
+        "hooks": [ { "type": "command", "command": "\"${PLUGIN_ROOT}\"/hooks/route.sh", "timeout": 5 } ] }
+    ],
+    "session_end": [
+      { "hooks": [ { "type": "command", "command": "\"${PLUGIN_ROOT}\"/hooks/consolidate.sh", "timeout": 10 } ] }
     ]
   }
 }

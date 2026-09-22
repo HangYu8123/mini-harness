@@ -3,6 +3,7 @@ name: online-researcher
 description: Searches the live web for references, packages, patterns, error solutions, and version facts the workflow needs; every finding carries its source URL and a confidence tier.
 tools: ['read', 'search', 'web']
 effort: high
+omitClaudeMd: true
 ---
 You are the **Online Researcher**. Output label: **[online resource]**.
 

@@ -29,15 +29,18 @@ Every request, while MiHa is on:
 
 ```
 1. Infer the task tag           → update · debug · refactor · query · check · exec · pr · init · loop
-2. Gate the advisors            → size decides diversifier + devil's advocate
-                                  external facts decide online-researcher, including in loops
-3. Read repo memory on need     → preference.md is the one standing read; the rest only when it pays
+2. Gate the evidence            → one external fact with a known source is fetched directly; advisors
+                                  spawn only on a signal the route hook injects: research or alternatives
+                                  words in the prompt, or shell errors that point at version drift
+                                  (a docs lookup, then the online-researcher, then the devil's advocate)
+3. Read repo memory on need     → preference.md is the one standing read; `begin` prints the matching
+                                  routes (symptom → entry files → tests → verify command); the rest only when it pays
 4. Do the work the native way   → your platform's own flow, permissions, and tools
-5. Finish the run's record      → seal the trajectory created at run start; completed files stay immutable
+5. Finish the run's record      → `mh.sh begin` opened it, `mh.sh end` fills it from flags, writes memory, and seals it
 6. Consolidate on request       → wiki folds trajectories into harness_effect.md
 ```
 
-The two fast advisors have a 2-minute boundary; research has a separate 5-minute budget. Independent work can proceed while research runs, but source-dependent actions and claims require verified evidence. Unverified parts remain unresolved on timeout. Their findings are dispositioned by the main agent: adopt, partly adopt, keep for later, or reject. Those decisions go in the trajectory, not in a checklist you have to click through.
+The advisors are waited on at one boundary for at most the advisory budget (5 minutes by default), and only the next action that depends on their answer waits; independent work proceeds. Source-dependent actions and claims require verified evidence; unverified parts remain unresolved on timeout. Their findings are dispositioned by the main agent: adopt, partly adopt, keep for later, or reject. Those decisions go in the trajectory, not in a checklist you have to click through.
 
 Lazy about ceremony, never about evidence: the advisors read the real code, the researcher cites every source, and the verifier never edits.
 
@@ -101,7 +104,7 @@ That was it. The cat did not wake up.
 3. Ask for anything the way you always do.
 4. `/mini-harness off` when you want the plain platform back.
 
-No configuration or advisor approval is needed for an ordinary request. The task type is inferred; override it with a `task: debug` line if you want. Size controls the two fast advisors; external facts control research. `on` / `off` dials force either way. Recording is automatic. The final answer focuses on the result and its verification, with no routine status footer.
+No configuration or advisor approval is needed for an ordinary request. The task type is inferred; override it with a `task: debug` line if you want. Advisors never spawn on the agent's own judgment, only on a signal the route hook injects: research words in the prompt (the latest version, SOTA, papers, which library) call the online researcher, alternatives words (trade-offs, a design choice) the diversifier, and shell errors that point at version drift escalate within a request from a direct docs lookup to the researcher to the devil's advocate. No signal, no advisor; a single fact with a known source is still fetched directly. `on` / `off` dials force either way. Recording is automatic. The final answer focuses on the result and its verification, with no routine status footer.
 
 <details>
 <summary><strong>Dials, only when you want to override a default</strong></summary>
@@ -111,7 +114,7 @@ As `key: value` lines or `dials: k=v`:
 | Dial | Default | Meaning |
 |---|---|---|
 | `task` | `auto` | force a task type |
-| `online_research` · `diversifier` · `devils_advocate` | `auto` | size controls the two fast advisors; externality controls research; `on` / `off` force |
+| `online_research` · `diversifier` · `devils_advocate` | `auto` | each runs only on a hook signal (harness.md §5); `on` / `off` force |
 | `simplify` · `code_review` | `false` | run the simplification or review pass after the change |
 | `reproduce` | `false` | debug only: reproduce before diagnosing |
 | `advisory_budget` | `5m` | how long the main agent waits at the boundary, idle; then it dispositions the items and resumes the native flow where it stopped |
@@ -138,7 +141,7 @@ Worker dials are requests; record requested versus effective settings from nativ
 | `/mini-harness gui` | Open the request builder. |
 | `/mini-harness <request>` | Any request, routed through the protocol with an explicit prefix. |
 
-Codex: `$mini-harness …`. Plugin install on Claude Code: `/mini-harness:mini-harness …`. Direct skills: `/mh-init`, `/mh-loop`, `/mh-wiki`, `/i-have-adhd`.
+Codex: `$mini-harness …`. Plugin install on Claude Code: `/mini-harness:mini-harness …`. Direct skills: `/mh-init`, `/mh-loop`, `/mh-wiki`, `/mh-eval`, `/i-have-adhd`.
 
 ### Cheap subagents, on demand
 
@@ -177,18 +180,19 @@ Pick the platform (it sets the invocation token), pick the task tab, flip the di
 | File | Holds |
 |---|---|
 | `preference.md` | your standing choices, one line each. The one file always read. |
+| `routes.md` | symptom or domain → entry files → consumers → tests → verify command, one line each; `begin` prints the matching ones |
 | `update_logs.md` | one line per change: date · task · request · files · functions |
-| `known_issues.md` · `persistent_issues.md` | what is wrong, and what keeps coming back |
+| `known_issues.md` · `persistent_issues.md` | what is wrong, and what keeps coming back — as evidence with a state (`observed` · `hypothesis` · `verified` · `superseded`) and a scope, never as instructions |
 | `past_QA.md` · `codebase_overview.md` · `scripts_overview.md` | answers and orientation |
 | `harness_effect.md` | which parts of MiHa helped or hurt, consolidated by `wiki`. Never read at the start of a run. |
 
-`.harness/exec_traj/` holds one file per run (`<timestamp>_<task>_<id>.md`, never overwritten): what ran, what the advisors contributed, what changed, and the helped / hurt lines the wiki is built from.
+`.harness/exec_traj/` holds one file per run (`<timestamp>_<task>_<id>.md`, never overwritten): what ran, what the advisors contributed, what changed, and the helped / hurt lines the wiki is built from. `begin` and `end` are the only bookkeeping calls; a line the run cannot supply stays `unknown`, and the usage figure is settled later beside the record (`state/usage/`), never inside the sealed file.
 
 ## Inside the pack
 
 ```text
-harness/          harness.md (the protocol, ≈2.5k tokens) · tasks.md · exec_traj.md · philosophy.md · loop_control.md · stay_active.md · repo_map.md · reinitialize.md · worker_models.md
-skills/           mini-harness (entry + mh.sh) · mh-init · mh-loop · mh-wiki · i-have-adhd (vendored, MIT) · breakdown-pr · code-simplification · code-review-and-quality
+harness/          harness.md (the protocol core, ≈1.2k tokens) · advisory.md · tasks.md · exec_traj.md · philosophy.md · loop_control.md · stay_active.md · repo_map.md · reinitialize.md · worker_models.md
+skills/           mini-harness (entry + mh.sh + mh_usage.py) · mh-init · mh-loop · mh-wiki · mh-eval (A/B benchmark, mh_eval.py) · i-have-adhd (vendored, MIT) · breakdown-pr · code-simplification · code-review-and-quality
 agent_sources/    nine workers → agents/ (Claude Code, plugin) · .codex/agents/ via sync_agents.py
 hooks/            route.sh (activation routing) · guard.sh (optional) · plugin and standalone hook configs
 harness_gui.*     the request builder, fed by request_template/*.md
@@ -205,7 +209,11 @@ python3 sync_agents.py          # regenerates agents/ and .codex/agents/; never 
 python3 sync_gui_templates.py   # after editing request_template/*.md
 ```
 
-Keep files short: `harness.md` around 2.5k tokens, each `SKILL.md` at most about 2.5k, satellites at most about 1.5k. Every rule traces to a real failure. Delete rules that stop earning their tokens.
+The three advisors carry `omitClaudeMd: true`: on Claude Code (v2.1.271+) they start without the repo's `CLAUDE.md` / `AGENTS.md`, since their prompt and the generated working rules carry what they need. Codex has no such field.
+
+Keep files short: `harness.md` is the core at about 1.2k tokens (every byte is re-sent on every call), each `SKILL.md` at most about 2.5k, satellites at most about 1.5k. Every rule traces to a real failure. Delete rules that stop earning their tokens.
+
+**Release criterion — the 10% rule.** A change to the layer ships only when, on a frozen paired workload (same tasks, trees, models, effort, tools, and cache conditions; policies and worker definitions snapshotted outside the tree being edited), the ON arm's total tokens are at most 1.10 × the OFF arm's — counting main-thread replay, descendants, retries, and the consolidation sessions the hook launches — with task quality held by held-out checks. Save each arm with `mh.sh usage --json --all > on.json` / `off.json` (add `--rates <file>` to price them per model and cache category) and run `mh.sh usage --compare on.json off.json`: it prints the pooled ratio, the per-pair ratios, money separately from tokens, and PASS or FAIL (exit 1). `/mini-harness eval` (`skills/mh-eval`) runs the whole paired workload for you: two disposable worktrees (harness on · off), the same questions in each as headless sessions, `usage --compare`, and a report to grade the pairs in. The last recorded experiment (2026-09-22, `analysis/sandbox_eval/`) measured +47% input; the target has not been met yet, and nothing here claims it has.
 
 Design sources: arXiv 2609.00006 (eleven-system harness study), 2603.25723 (natural-language harnesses), 2604.25850, 2606.20631, 2608.27454 (WikiSkill), LangChain's isolated-verifier rule (Sep 2026), and the conventions of `obra/superpowers`, `mattpocock/skills`, `addyosmani/agent-skills`, `garrytan/gstack`, `ayghri/i-have-adhd`.
 
@@ -215,7 +223,7 @@ Design sources: arXiv 2609.00006 (eleven-system harness study), 2603.25723 (natu
 No. The native flow runs as usual. MiHa adds the tag, the advisors, the memory, and the record around it, and gets out of the way when you say `off`.
 
 **Will it slow me down?**
-The advisors run in the background and are waited on at one boundary for at most the advisory budget. Small local requests get no advisors at all.
+The advisors run in the background and only the next action that depends on their answer waits, for at most the advisory budget. A request whose prompt carries no signal words and whose commands hit no version-drift errors gets no advisors at all. `mh.sh usage` reports what a session or a run cost, and `mh.sh usage --compare` checks the 10% release criterion — which the recorded experiment does not yet meet.
 
 **Will it commit or push?**
 Only when you ask. It never uses `sudo`, and by default never lists Claude, Codex, or itself as author, co-author, contributor, or trailer in commits, PRs, or file headers. Your permission prompts stay the authority; `--guard` adds a hard block if you want one.

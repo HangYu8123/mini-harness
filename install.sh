@@ -10,6 +10,7 @@
 #   --copy-skills        copy skills into .claude/skills/ instead of symlinking to .agents/skills/
 #   --no-hooks           do not merge the routing hook into .claude/settings.json / .codex/hooks.json
 #   --guard              also install the PreToolUse safety guard (see hooks/README.md)
+#   --consolidate        also install the SessionEnd consolidation hook (see hooks/README.md)
 #   --force              overwrite same-named files this script did not install or that were edited locally
 #   --uninstall          remove every file this script installed and left unmodified; memory is kept
 #   --model <id> --claude-model <id> --codex-model <id> --effort <lvl> --researcher-effort <lvl>
@@ -22,11 +23,12 @@ set -euo pipefail
 
 PACK="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${1:-}"; shift || true
-[ -n "$TARGET" ] && [ -d "$TARGET" ] || { sed -n '9,18p' "$0" >&2; exit 1; }
+[ -n "$TARGET" ] && [ -d "$TARGET" ] || { sed -n '9,19p' "$0" >&2; exit 1; }
 TARGET="$(cd "$TARGET" && pwd)"
-COPY_SKILLS=false; HOOKS=true; GUARD=false; FORCE=false; UNINSTALL=false; SYNC_ARGS=()
+COPY_SKILLS=false; HOOKS=true; GUARD=false; CONSOLIDATE=false; FORCE=false; UNINSTALL=false; SYNC_ARGS=()
 while [ $# -gt 0 ]; do case "$1" in
-  --copy-skills) COPY_SKILLS=true;; --no-hooks) HOOKS=false;; --guard) GUARD=true;; --force) FORCE=true;; --uninstall) UNINSTALL=true;;
+  --copy-skills) COPY_SKILLS=true;; --no-hooks) HOOKS=false;; --guard) GUARD=true;; --consolidate) CONSOLIDATE=true;;
+  --force) FORCE=true;; --uninstall) UNINSTALL=true;;
   --model|--claude-model|--codex-model|--effort|--researcher-effort) [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 1; }; SYNC_ARGS+=("$1" "$2"); shift;;
   *) echo "unknown option $1" >&2; exit 1;; esac; shift; done
 MARK_BEGIN="<!-- mini-harness:begin -->"; MARK_END="<!-- mini-harness:end -->"
@@ -109,7 +111,7 @@ PY
     say "removed the mini-harness block from AGENTS.md"
   fi
   CL="$TARGET/CLAUDE.md"; [ -f "$CL" ] && [ "$(tr -d '[:space:]' < "$CL")" = "@AGENTS.md" ] && [ ! -f "$AG" ] && rm -f "$CL" && say "removed CLAUDE.md (only imported AGENTS.md)"
-  for pair in ".claude/settings.json:claude-route.snippet.json" ".claude/settings.json:claude-settings.snippet.json" ".codex/hooks.json:codex-route.snippet.json" ".codex/hooks.json:codex-hooks.snippet.json"; do
+  for pair in ".claude/settings.json:claude-route.snippet.json" ".claude/settings.json:claude-settings.snippet.json" ".claude/settings.json:claude-consolidate.snippet.json" ".codex/hooks.json:codex-route.snippet.json" ".codex/hooks.json:codex-hooks.snippet.json" ".codex/hooks.json:codex-consolidate.snippet.json"; do
     f="$TARGET/${pair%%:*}"; [ -f "$f" ] && hooks_edit "$f" "$PACK/hooks/${pair#*:}" remove
   done
   say "removed hook entries"
@@ -120,13 +122,14 @@ fi
 
 # ---------------------------------------------------------------- 1. Pack files -> .harness/
 mkdir -p "$H/repo_info" "$H/exec_traj" "$H/state" "$H/hooks"
-for f in harness.md tasks.md exec_traj.md worker_models.md philosophy.md repo_map.md reinitialize.md loop_control.md stay_active.md; do put "$PACK/harness/$f" "$H/$f"; done
+for f in harness.md tasks.md exec_traj.md advisory.md worker_models.md philosophy.md repo_map.md reinitialize.md loop_control.md stay_active.md; do put "$PACK/harness/$f" "$H/$f"; done
 [ -f "$H/repo_info/README.md" ] || cp "$PACK/harness/repo_info_README.md" "$H/repo_info/README.md"
-for f in preference.md known_issues.md persistent_issues.md update_logs.md past_QA.md codebase_overview.md scripts_overview.md harness_effect.md; do
+for f in preference.md routes.md known_issues.md persistent_issues.md update_logs.md past_QA.md codebase_overview.md scripts_overview.md harness_effect.md; do
   [ -f "$H/repo_info/$f" ] || : > "$H/repo_info/$f"
 done
 put "$PACK/hooks/route.sh" "$H/hooks/route.sh"; chmod +x "$H/hooks/route.sh"
 $GUARD && { put "$PACK/hooks/guard.sh" "$H/hooks/guard.sh"; chmod +x "$H/hooks/guard.sh"; }
+$CONSOLIDATE && { put "$PACK/hooks/consolidate.sh" "$H/hooks/consolidate.sh"; chmod +x "$H/hooks/consolidate.sh"; }
 say "installed .harness/ (protocol, satellites, repo_info/, exec_traj/, hooks/)"
 
 # ---------------------------------------------------------------- 2. Skills -> .agents/skills/ (Codex) + .claude/skills/ (Claude Code)
@@ -151,7 +154,7 @@ say "installed agents: $(ls "$PACK/agent_sources" | sed 's/\.agent\.md//' | tr '
 # ---------------------------------------------------------------- 4. AGENTS.md block (marker-guarded, idempotent) and CLAUDE.md import
 block="$MARK_BEGIN
 ## mini-harness
-A supplementary layer, off until \`/mini-harness on\` (Codex: \`\$mini-harness on\`). While active, every request follows \`.harness/harness.md\`: the native flow runs as usual; the protocol adds a silently inferred task tag, an advisory pass gated by size and externality (online-researcher · diversifier · devils-advocate) whose findings the main agent dispositions itself, repo memory in \`.harness/repo_info/\` read on need (\`preference.md\` is the one standing read), an automatic record in \`.harness/exec_traj/\`, and the i-have-adhd output style. Workers spawn by agent type from \`.codex/agents/\` · \`.claude/agents/\`; new source files carry the provenance header (\`.harness/philosophy.md\`). By default, Claude, Codex, and mini-harness never appear as author, co-author, contributor, or trailer in commits, pull requests, or file headers unless the user asks — this holds whether the layer is on or off.
+A supplementary layer, off until \`/mini-harness on\` (Codex: \`\$mini-harness on\`). While active, every request follows \`.harness/harness.md\`: the native flow runs as usual; the protocol adds a silently inferred task tag, an evidence gate (one external fact with a known source is fetched directly; the advisors — online-researcher, diversifier, devils-advocate — spawn only on a signal the route hook injects: word classes in the prompt, or shell errors that point at version drift) whose findings the main agent dispositions itself, repo memory in \`.harness/repo_info/\` read on need (\`preference.md\` is the one standing read), an automatic record in \`.harness/exec_traj/\`, and the i-have-adhd output style. Workers spawn by agent type from \`.codex/agents/\` · \`.claude/agents/\`; new source files carry the provenance header (\`.harness/philosophy.md\`). By default, Claude, Codex, and mini-harness never appear as author, co-author, contributor, or trailer in commits, pull requests, or file headers unless the user asks — this holds whether the layer is on or off.
 $MARK_END"
 AG="$TARGET/AGENTS.md"
 if [ -f "$AG" ] && grep -Fq "$MARK_BEGIN" "$AG"; then
@@ -181,6 +184,11 @@ if $GUARD; then
   hooks_edit "$TARGET/.claude/settings.json" "$PACK/hooks/claude-settings.snippet.json" add
   hooks_edit "$TARGET/.codex/hooks.json" "$PACK/hooks/codex-hooks.snippet.json" add
   say "installed PreToolUse guard (hard block of commit/push/sudo — opt-in)"
+fi
+if $CONSOLIDATE; then
+  hooks_edit "$TARGET/.claude/settings.json" "$PACK/hooks/claude-consolidate.snippet.json" add
+  hooks_edit "$TARGET/.codex/hooks.json" "$PACK/hooks/codex-consolidate.snippet.json" add
+  say "installed SessionEnd consolidation hook (one headless wiki run at >= 5 unconsolidated trajectories — opt-in)"
 fi
 
 # ---------------------------------------------------------------- 6. Manifest: drop owned files the pack no longer ships

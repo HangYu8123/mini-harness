@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "session_end": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$PWD; while :; do if [ -x \"$d/.harness/hooks/consolidate.sh\" ]; then exec \"$d/.harness/hooks/consolidate.sh\"; fi; [ \"$d\" = / ] && exit 0; d=$(dirname \"$d\"); done",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

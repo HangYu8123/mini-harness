@@ -83,6 +83,8 @@ def parse_source(path):
             raise SystemExit(f"{path}: frontmatter is missing `{key}`.")
     if front.get("effort") and front["effort"] not in EFFORTS:
         raise SystemExit(f"{path}: unknown effort '{front['effort']}'.")
+    if front.get("omitClaudeMd", "false") not in ("true", "false"):
+        raise SystemExit(f"{path}: omitClaudeMd must be true or false.")
     return front, m.group(2).strip()
 
 
@@ -131,6 +133,10 @@ def render_claude(slug, src_name, front, body, tokens, model, effort):
     lines.append("model: " + q(model))
     if effort:
         lines.append(f"effort: {effort}")
+    # Claude Code only (v2.1.271+): the worker starts without the user, project, and local CLAUDE.md /
+    # AGENTS.md files. For roles whose prompt carries all they need; the working rules travel in PREAMBLE.
+    if front.get("omitClaudeMd") == "true":
+        lines.append("omitClaudeMd: true")
     lines += ["---", "", f"<!-- {MARKER} from {SRC_DIR}/{src_name} — do not edit by hand. -->", "", body, "", PREAMBLE]
     return "\n".join(lines) + "\n"
 

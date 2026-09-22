@@ -21,6 +21,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=$PWD; while :; do if [ -x \"$d/.harness/hooks/route.sh\" ]; then exec \"$d/.harness/hooks/route.sh\"; fi; [ \"$d\" = / ] && exit 0; d=$(dirname \"$d\"); done",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

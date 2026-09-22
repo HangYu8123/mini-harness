@@ -10,6 +10,10 @@
     "PreToolUse": [
       { "matcher": "Agent|Task",
         "hooks": [ { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh\"", "timeout": 5 } ] }
+    ],
+    "PostToolUseFailure": [
+      { "matcher": "Bash|PowerShell",
+        "hooks": [ { "type": "command", "command": "\"${CLAUDE_PROJECT_DIR}/.harness/hooks/route.sh\"", "timeout": 5 } ] }
     ]
   }
 }
