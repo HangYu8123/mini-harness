@@ -86,7 +86,7 @@ class EffortControlTests(unittest.TestCase):
         self.assert_manifest_matches_files()
 
     def test_inherit_drops_the_pins(self):
-        self.mh("effort", "inherit", "claude-model=inherit", "researcher=inherit")
+        self.mh("effort", "inherit", "model=inherit", "researcher=inherit")
         self.assertNotIn("effort", self.front("implementer.md"))
         self.assertNotIn("effort", self.front("online-researcher.md"))
         self.assertEqual(self.front("implementer.md")["model"], '"inherit"')
@@ -145,7 +145,7 @@ class EffortControlTests(unittest.TestCase):
         shutil.rmtree(self.repo / ".codex/agents")
         self.mh("effort", "high")
         self.assertIn("effort: high", (self.pack / "agents/implementer.md").read_text())
-        self.assertIn("effort: medium", (self.pack / "agents/online-researcher.md").read_text())
+        self.assertIn("effort: high", (self.pack / "agents/online-researcher.md").read_text())   # researcher keeps its own
         status = self.mh("status").stdout
         self.assertIn("effort: high", status)
 

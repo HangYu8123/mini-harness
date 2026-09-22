@@ -29,16 +29,15 @@ Every request, while MiHa is on:
 
 ```
 1. Infer the task tag           → update · debug · refactor · query · check · exec · pr · init · loop
-2. Size-gate the advisors       → small & local: none
-                                  small but hinges on an outside fact: online-researcher only
-                                  everything else: researcher + diversifier + devil's advocate
+2. Gate the advisors            → size decides diversifier + devil's advocate
+                                  external facts decide online-researcher, including in loops
 3. Read repo memory on need     → preference.md is the one standing read; the rest only when it pays
 4. Do the work the native way   → your platform's own flow, permissions, and tools
-5. Record the run               → .harness/exec_traj/, one file per run, never overwritten
+5. Finish the run's record      → seal the trajectory created at run start; completed files stay immutable
 6. Consolidate on request       → wiki folds trajectories into harness_effect.md
 ```
 
-Advisor waiting is bounded at 5 minutes. Their findings are dispositioned by the main agent: adopt, partly adopt, keep for later, or reject. Those decisions go in the trajectory, not in a checklist you have to click through.
+The two fast advisors have a 2-minute boundary; research has a separate 5-minute budget. Independent work can proceed while research runs, but source-dependent actions and claims require verified evidence. Unverified parts remain unresolved on timeout. Their findings are dispositioned by the main agent: adopt, partly adopt, keep for later, or reject. Those decisions go in the trajectory, not in a checklist you have to click through.
 
 Lazy about ceremony, never about evidence: the advisors read the real code, the researcher cites every source, and the verifier never edits.
 
@@ -98,11 +97,11 @@ That was it. The cat did not wake up.
 ## Use it
 
 1. `/mini-harness on` (Codex: `$mini-harness on`; plugin: `/mini-harness:mini-harness on`).
-2. Once per repo: `/mini-harness init`. Builds the memory under `.harness/repo_info/`. About 5 minutes on a small repo, 15 on a large one. Claude Code reads worker definitions at session start, so the first `init` sets them and asks for one new session; run it again there.
+2. Once per repo: `/mini-harness init`. Builds the memory under `.harness/repo_info/` using loaded worker settings. Only an explicit setting change requires a restart; the resumed init restores its saved settings when complete.
 3. Ask for anything the way you always do.
 4. `/mini-harness off` when you want the plain platform back.
 
-No configuration or advisor approval is needed for an ordinary request. The task type is inferred; override it with a `task: debug` line if you want. The advisors follow the size gate; `on` / `off` dials force either way. Recording is automatic. The final answer focuses on the result and its verification, with no routine status footer.
+No configuration or advisor approval is needed for an ordinary request. The task type is inferred; override it with a `task: debug` line if you want. Size controls the two fast advisors; external facts control research. `on` / `off` dials force either way. Recording is automatic. The final answer focuses on the result and its verification, with no routine status footer.
 
 <details>
 <summary><strong>Dials, only when you want to override a default</strong></summary>
@@ -112,16 +111,16 @@ As `key: value` lines or `dials: k=v`:
 | Dial | Default | Meaning |
 |---|---|---|
 | `task` | `auto` | force a task type |
-| `online_research` · `diversifier` · `devils_advocate` | `auto` | `auto` = size gate; `on` / `off` force |
+| `online_research` · `diversifier` · `devils_advocate` | `auto` | size controls the two fast advisors; externality controls research; `on` / `off` force |
 | `simplify` · `code_review` | `false` | run the simplification or review pass after the change |
 | `reproduce` | `false` | debug only: reproduce before diagnosing |
-| `advisory_budget` | `5m` | how long the main agent waits at the boundary |
+| `advisory_budget` | `5m` | how long the main agent waits at the boundary, idle; then it dispositions the items and resumes the native flow where it stopped |
 | `adhd_output` | `on` | the i-have-adhd output style |
-| `subagent_model` · `subagent_effort` | `inherit` · `low` | worker model and effort for this request |
+| `subagent_model` · `subagent_effort` | `sonnet` (Claude Code) · `gpt-5.6-sol` (Codex) · `medium` (online researcher `high`) | worker model and effort for this request |
 
-`init` alone defaults its workers to `claude-sonnet-4-6` on Claude Code and `gpt-5.6-luna` on Codex at effort `max`; override with `subagent_model:` and `subagent_effort:` lines. User-specified overrides win; native permissions still apply.
+`init` runs its workers on the definitions already loaded (no rewrite, no restart); `subagent_model:` and `subagent_effort:` lines request a rewrite, which takes effect in the next session. User-specified overrides win; native permissions still apply.
 
-Model selections go through native launch controls. Claude supports aliases and full IDs; Codex uses a general-agent fallback carrying the worker role when a custom definition would override the selected settings. Per-request selections never rewrite shared worker files. Preset names were checked against the [official Codex models](https://learn.chatgpt.com/docs/models) and [Claude models](https://platform.claude.com/docs/en/models/overview). Details: `harness/worker_models.md`.
+Worker dials are requests; record requested versus effective settings from native launch evidence. Explicit init changes use an owned snapshot across restart and restore it afterward. Preset names were checked against the [official Codex models](https://learn.chatgpt.com/docs/models) and [Claude models](https://platform.claude.com/docs/en/models/overview). Details: `harness/worker_models.md`.
 
 </details>
 

@@ -1,8 +1,8 @@
 /mini-harness
 task: update
-subagent_model: inherit
-subagent_effort: low
-online_researcher_effort: medium
+subagent_model: sonnet
+subagent_effort: medium
+online_researcher_effort: high
 diversifier: auto
 devils_advocate: auto
 online_research: auto

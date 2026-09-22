@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mini-harness workspace helper — on | off | status | doctor | traj <task> | effort <level|save|restore|reset> … | subagents [on …|off]
+# Workspace helper: activation, traj <task>|complete <file>, wiki begin|end <owner>, fingerprint <files>, effort, subagents.
 #
 # Original request: activation must bootstrap the writable workspace layout even
 # for a plugin-only install, and on/off/status/hooks must agree on one root rule.
@@ -21,7 +21,10 @@ find_root() { local d=$1; while :; do
   [ "$d" = / ] && return 1; d=$(dirname "$d"); done; }
 ROOT=$(find_root "$PWD") || ROOT=$PWD
 H="$ROOT/.harness"
-hash_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1; else shasum -a 256 "$1" | cut -d' ' -f1; fi; }
+hash_of() { local digest
+  if command -v sha256sum >/dev/null 2>&1; then digest=$(sha256sum "$1") || return 1
+  else digest=$(shasum -a 256 "$1") || return 1; fi
+  printf '%s\n' "${digest%% *}"; }
 
 ensure_layout() {
   if [ ! -f "$H/harness.md" ]; then
@@ -44,7 +47,20 @@ style_path() {
 }
 wiki_cursor() { sed -n 's/.*consolidated through \([^[:space:]]*\).*/\1/p' "$H/repo_info/harness_effect.md" 2>/dev/null | tail -n1; }
 traj_count() { ls "$H/exec_traj" 2>/dev/null | grep -c '\.md$' || true; }
-unconsolidated() { local c; c=$(wiki_cursor); ls "$H/exec_traj" 2>/dev/null | grep '\.md$' | awk -v c="$c" '$0 > c' | wc -l | tr -d ' '; }
+# Completion receipts seal the content, independent of header text or age. Legacy records need explicit completion too.
+in_flight() { local receipt="$H/state/trajectories/${1##*/}.sha256" digest
+  [ -s "$receipt" ] && digest=$(hash_of "$1") && [ "$(cat "$receipt")" = "$digest" ] && return 1; return 0; }
+in_flight_count() { local n=0 f c; c=$(wiki_cursor)
+  for f in "$H"/exec_traj/*.md; do [ -f "$f" ] || continue; [ "${f##*/}" \> "$c" ] || continue; in_flight "$f" && n=$((n+1)); done; printf '%s' "$n"; }
+unconsolidated() { local c n=0 f; c=$(wiki_cursor)
+  for f in "$H"/exec_traj/*.md; do [ -f "$f" ] || continue; [ "${f##*/}" \> "$c" ] || continue; in_flight "$f" && continue; n=$((n+1)); done; printf '%s' "$n"; }
+# Advisory only: definitions are shared, and running sessions may retain their loaded copies.
+live_warn() { local k; k=$(in_flight_count); [ "$k" -gt 0 ] && echo "warn     $k pending trajectory record(s) — sessions may be running; about to rewrite shared definitions (loaded sessions may not reload)"; return 0; }
+# Serialize short state transitions. No age-based takeover: recover a guard only after its process is known to be gone.
+state_guard() { mkdir -p "$H/state" || return 1; G="$H/state/$1_guard"
+  mkdir "$G" 2>/dev/null || { echo "mh.sh: state operation busy ($G); recover only after its process has stopped" >&2; return 1; }
+  trap 'rmdir "$G" 2>/dev/null' EXIT; trap 'exit 130' INT; trap 'exit 143' TERM HUP; }
+owner_token() { printf '%s-%s-%s-%s' "$(date +%s)" "$$" "$RANDOM" "$RANDOM"; }
 # Effort control: rewrite model/effort in a generated definition in place ("" = keep; "inherit" = drop the effort line / model pin).
 edit_claude() { local f=$1 m=$2 e=$3 t; t=$(mktemp)
   awk -v m="$m" -v e="$e" 'BEGIN{fm=0}
@@ -148,13 +164,14 @@ case "$cmd" in
     if [ -f "$H/state/active" ]; then echo "active    yes · since $(head -n1 "$H/state/active")"; else echo "active    no"; fi
     if [ -f "$H/harness.md" ]; then ok "protocol $H/harness.md"; else bad "no $H/harness.md — run: on (plugin) or install.sh (standalone)"; fi
     if [ -s "$H/repo_info/codebase_overview.md" ]; then ok "repo_info initialized (codebase_overview.md non-empty)"; else warn "repo_info not initialized — run: init"; fi
-    cur=$(wiki_cursor); echo "traj      $(traj_count) trajectories · $(unconsolidated) unconsolidated (wiki cursor: ${cur:-none})"
+    cur=$(wiki_cursor); echo "traj      $(traj_count) trajectories · $(unconsolidated) unconsolidated · $(in_flight_count) pending (wiki cursor: ${cur:-none}; consolidate with: wiki)"
     ca=$(ls "$ROOT/.claude/agents" 2>/dev/null | grep -c '\.md$' || true); cx=$(ls "$ROOT/.codex/agents" 2>/dev/null | grep -c '\.toml$' || true)
     echo "workers   .claude/agents: $ca · .codex/agents: $cx (0 = expect the plugin's agents on Claude Code; Codex needs install.sh)"
     cdef="$ROOT/.claude/agents"; [ -f "$cdef/implementer.md" ] || cdef="${PACK:+$PACK/agents}"   # plugin install: the plugin's own agents/
     if [ -n "$cdef" ] && [ -f "$cdef/implementer.md" ]; then echo "effective claude · $(grep -E '^(model|effort):' "$cdef/implementer.md" | tr '\n' ' ')· researcher $(grep -E '^effort:' "$cdef/online-researcher.md" 2>/dev/null | tr '\n' ' ')($cdef; change with: effort; read at session start)"; fi
     if [ -f "$ROOT/.codex/agents/implementer.toml" ]; then echo "effective codex · $(grep -E '^(model|model_reasoning_effort) = ' "$ROOT/.codex/agents/implementer.toml" | tr '\n' ' ')· researcher $(grep -E '^model_reasoning_effort = ' "$ROOT/.codex/agents/online-researcher.toml" 2>/dev/null | tr '\n' ' ')(.codex/agents)"; fi
     sub_line
+    [ -f "$H/state/init_effort_saved" ] && echo "init      pending restoration · owner $(snap_val "$H/state/init_effort_saved" owner) (resume init; effort init-restore <owner>)"
     [ "$cmd" = status ] && exit 0
     for f in $PROTO_FILES; do [ -f "$H/$f" ] || bad "missing $H/$f"; done
     [ -f "$H/hooks/route.sh" ] && { [ -x "$H/hooks/route.sh" ] && ok "standalone route hook executable" || bad "$H/hooks/route.sh is not executable"; }
@@ -175,16 +192,59 @@ case "$cmd" in
       ok "ownership manifest checked ($(wc -l < "$H/installed.tsv" | tr -d ' ') entries)"
     else warn "no ownership manifest ($H/installed.tsv)"; fi
     [ -f "$H/state/active" ] && [ ! -f "$H/harness.md" ] && bad "active marker without protocol files"
+    # An unpinned worker inherits the main model: 46 of the first 49 advisor spawns ran on Fable / Opus that way.
+    unp=""; for f in ${cdef:+"$cdef"/*.md}; do [ -f "$f" ] && grep -q "$MARKER" "$f" && [ "$(claude_val "$f" model)" = inherit ] && unp="$unp ${f##*/}"; done
+    for f in "$ROOT"/.codex/agents/*.toml; do [ -f "$f" ] && grep -q "$MARKER" "$f" && [ "$(codex_val "$f" model)" = inherit ] && unp="$unp ${f##*/}"; done
+    [ -n "$unp" ] && warn "worker definitions without a model pin (they inherit the main model):$unp — intended only on an explicit inherit; otherwise: effort <level> claude-model=<alias> codex-model=<id>"
     exit $fail;;
+  note)
+    # note <memory file> "<line>" | note untaken "<line>" — add one line to repo memory without the agent reading the file
+    # first (each read lands in the main context for the rest of the session). update_logs.md is newest-first, so it
+    # is prepended; the others are appended; `untaken` lands under `## Untaken options` in known_issues.md.
+    f=${2:?usage: mh.sh note <preference.md|known_issues.md|persistent_issues.md|update_logs.md|past_QA.md|untaken> "<line>"}; shift 2; line="$*"
+    [ -n "$line" ] || { echo "mh.sh note: empty line" >&2; exit 2; }; mkdir -p "$H/repo_info"
+    case "$f" in
+      update_logs.md) p="$H/repo_info/$f"; [ -f "$p" ] || : > "$p"; t=$(mktemp); { printf '%s\n' "$line"; cat "$p"; } > "$t" && cat "$t" > "$p"; rm -f "$t";;
+      preference.md|known_issues.md|persistent_issues.md|past_QA.md) p="$H/repo_info/$f"; printf '%s\n' "$line" >> "$p";;
+      untaken) p="$H/repo_info/known_issues.md"; [ -f "$p" ] || : > "$p"
+        if grep -q '^## Untaken options' "$p"; then t=$(mktemp)
+          awk -v l="$line" 'BEGIN{s=0;b=""} /^## Untaken options/{s=1; print; next}
+            s==1 && /^$/ {b=b"\n"; next}                       # hold the section'"'"'s trailing blank lines
+            s==1 && /^## /{print l; printf "%s", b; s=2; b=""}  # new line goes last in the section, blanks after it
+            s==1 {printf "%s", b; b=""} {print} END{if(s==1) print l}' "$p" > "$t" && cat "$t" > "$p"; rm -f "$t"
+        else printf '\n## Untaken options\n%s\n' "$line" >> "$p"; fi;;
+      *) echo "mh.sh note: unknown target '$f'" >&2; exit 2;;
+    esac; echo "noted → $p"; exit 0;;
+  untaken)
+    # untaken [n] — the last n parked options (default 5), for the diversifier's `history:` line
+    n=${2:-5}; p="$H/repo_info/known_issues.md"; [ -f "$p" ] || exit 0
+    awk 'BEGIN{s=0} /^## Untaken options/{s=1; next} s==1 && /^## /{s=0} s==1 && NF{print}' "$p" | tail -n "$n"; exit 0;;
   effort)
     # effort <low|medium|high|xhigh|max|inherit|reset|save|restore> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>] [model=<id|inherit>]
     # The one effort/model control that works the same on both platforms: both read a worker's effort from its
     # definition (the Claude Code Agent tool takes model aliases only and has no effort parameter; a Codex agent
     # file's settings win over a spawn request). Rewrites only generated definitions; `reset` = shipped defaults.
     # `save` snapshots the current settings to state/effort_saved (kept if one exists); `restore` puts that snapshot
-    # back and removes it — a temporary change (init's per-run dials) returns to what the user had, not the shipped defaults.
-    lvl=${2:-}; [ -n "$lvl" ] || { echo "usage: mh.sh effort <low|medium|high|xhigh|max|inherit|reset|save|restore> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>]" >&2; exit 2; }
+    # back and removes it. Init uses an independent owner-tagged snapshot across its restart.
+    lvl=${2:-}; [ -n "$lvl" ] || { echo "usage: mh.sh effort <level|keep|reset|save|restore|init-save|init-restore <owner>|init-keep <owner>> [researcher=<level>] [claude-model=<id|inherit>] [codex-model=<id|inherit>]" >&2; exit 2; }
     shift 2; rlvl=""; cm=""; xm=""; SAVED="$H/state/effort_saved"
+    case "$lvl" in
+      init-save|init-restore|init-keep)
+        state_guard init_effort || exit 1; SAVED="$H/state/init_effort_saved"
+        if [ "$lvl" = init-save ]; then
+          [ $# -eq 0 ] || { echo "usage: effort init-save" >&2; exit 2; }
+          [ ! -e "$SAVED" ] || { echo "mh.sh: pending init snapshot; resume owner $(snap_val "$SAVED" owner) before starting another" >&2; exit 1; }
+          worker_dirs || exit 1; token=$(owner_token)
+          save_settings "$SAVED" || exit 1
+          printf 'owner=%s\n' "$token" >> "$SAVED" || exit 1
+          echo "init-owner $token"; echo "init snapshot saved; retain owner across restart"; exit 0
+        fi
+        [ $# -eq 1 ] && [ -n "$1" ] && [ -f "$SAVED" ] && [ "$(snap_val "$SAVED" owner)" = "$1" ] || { echo "mh.sh: init snapshot owner mismatch or missing snapshot" >&2; exit 1; }
+        if [ "$lvl" = init-keep ]; then rm "$SAVED" || exit 1; echo "init snapshot cleared; current settings retained"; exit 0; fi
+        worker_dirs || exit 1; live_warn
+        restore_settings "$SAVED" || exit 1
+        echo "init settings restored"; print_effective "$cdir" "$xdir"; exit 0;;
+    esac
     case "$lvl" in save|restore) [ $# -eq 0 ] || { echo "mh.sh effort $lvl takes no arguments" >&2; exit 2; };; esac
     worker_dirs || exit 1
     if [ "$lvl" = save ]; then
@@ -193,20 +253,48 @@ case "$cmd" in
     fi
     if [ "$lvl" = restore ]; then
       when=$(snap_val "$SAVED" saved 2>/dev/null)
-      restore_settings "$SAVED" || { echo "mini-harness effort · no snapshot ($SAVED) — definitions unchanged"; print_effective "$cdir" "$xdir"; exit 0; }
+      [ -f "$SAVED" ] || { echo "mini-harness effort · no snapshot ($SAVED) — definitions unchanged"; print_effective "$cdir" "$xdir"; exit 0; }
+      live_warn; restore_settings "$SAVED" || exit 1
       echo "mini-harness effort · restored the settings saved $when · rewrote $nc Claude Code definition(s)${cdir:+ in $cdir} · $nx Codex definition(s)${xdir:+ in $xdir}"
       print_effective "$cdir" "$xdir"; echo "note: a running session may not reload definitions — check each worker's launch metadata and record requested vs effective"; exit 0
     fi
-    [ "$lvl" = reset ] && { lvl=low; rlvl=medium; cm=inherit; xm=inherit; }
+    [ "$lvl" = reset ] && { lvl=medium; rlvl=high; cm=sonnet; xm=gpt-5.6-sol; }   # the shipped defaults (sync_agents.py)
+    [ "$lvl" = keep ] && lvl=""   # model-only requests preserve each role's own effort
     for a in "$@"; do case "$a" in
       researcher=*) rlvl=${a#*=};; claude-model=*) cm=${a#*=};; codex-model=*) xm=${a#*=};; model=*) cm=${a#*=}; xm=${a#*=};;
       *) echo "mh.sh effort: unknown argument '$a'" >&2; exit 2;; esac; done
     check_levels effort "$lvl" "$rlvl" && check_models effort "$cm" "$xm" || exit 2
+    live_warn
     apply_settings "$cm" "$lvl" "$xm" "$lvl" "$rlvl" "$rlvl" || exit 1
     echo "mini-harness effort · rewrote $nc Claude Code definition(s)${cdir:+ in $cdir} · $nx Codex definition(s)${xdir:+ in $xdir}"
     print_effective "$cdir" "$xdir"
     echo "note: a running session may not reload definitions — check each worker's launch metadata and record requested vs effective"
     exit 0;;
+  wiki)
+    # No expiry: the owner holds the lock across tool calls, then releases it by token after writing the cursor.
+    sub=${2:-begin}; L="$H/state/wiki_lock"
+    case "$sub" in
+      begin)
+        [ $# -le 2 ] || { echo "usage: mh.sh wiki begin" >&2; exit 2; }
+        state_guard wiki || exit 1
+        [ ! -e "$L" ] || { echo "mini-harness wiki: another consolidation holds $L; no automatic expiry; recover only after its owner has stopped" >&2; exit 1; }
+        # Select under the short guard; acquire the long-lived lock only for a nonempty batch.
+        c=$(wiki_cursor); n=0; batch=()
+        for f in "$H"/exec_traj/*.md; do [ -f "$f" ] || continue; [ "${f##*/}" \> "$c" ] || continue
+          if in_flight "$f"; then echo "stop      ${f##*/} is pending — complete or recover it before advancing the cursor"; break; fi
+          batch+=("${f##*/}"); n=$((n+1)); [ "$n" -ge 5 ] && break; done
+        [ "$n" -gt 0 ] || { echo "batch     none — no lock held"; exit 0; }
+        token=$(owner_token)
+        ( set -C; printf '%s\n' "$token" > "$L" ) || exit 1
+        echo "owner     $token"; echo "wiki      lock taken; release on success or failure with: wiki end $token"
+        printf 'batch     %s\n' "${batch[@]}"; exit 0;;
+      end)
+        [ $# -eq 3 ] && [ -n "$3" ] || { echo "usage: mh.sh wiki end <owner>" >&2; exit 2; }
+        state_guard wiki || exit 1
+        [ -f "$L" ] && [ "$(cat "$L")" = "$3" ] || { echo "mh.sh wiki: owner mismatch or missing lock; nothing released" >&2; exit 1; }
+        rm "$L" || exit 1; echo "wiki      lock released"; exit 0;;
+      *) echo "usage: mh.sh wiki begin | end <owner>" >&2; exit 2;;
+    esac;;
   subagents)
     # subagents [status] | on [model=<id>] [claude-model=<id>] [codex-model=<id>] [effort=<level>] [researcher=<level>] | off
     # The standing subagent control: off by default, independent of on/off, and it touches nothing but subagent model
@@ -221,6 +309,7 @@ case "$cmd" in
       off) [ $# -eq 0 ] || { echo "mh.sh subagents off takes no arguments" >&2; exit 2; }
         worker_dirs local 2>/dev/null || { cdir=""; xdir=""; }
         if [ -f "$SS" ]; then
+          live_warn
           restore_settings "$SS" || exit 1
           echo "mini-harness subagents off · worker definitions put back as they were ($nc Claude Code · $nx Codex)"
         else echo "mini-harness subagents off"; fi
@@ -240,6 +329,7 @@ case "$cmd" in
     check_levels subagents "$lvl" "$rlvl" && check_models subagents "$cm" "$xm" || exit 2
     rlvl=${rlvl:-$lvl}   # one effort for every worker unless the researcher gets its own
     worker_dirs local 2>/dev/null || { cdir=""; xdir=""; }   # the hook still serves native subagents without repo definitions
+    live_warn
     if [ -f "$SS" ]; then restore_settings "$SS" >/dev/null || exit 1; fi   # repeated `on` starts from the user's own settings
     save_settings "$SS" || exit 1
     apply_settings "$cm" "$lvl" "$xm" "$lvl" "$rlvl" "$rlvl" || exit 1
@@ -259,17 +349,45 @@ case "$cmd" in
     echo "note     nothing else changes; off again with: subagents off"
     exit 0;;
   traj)
-    task=${2:?usage: mh.sh traj <task>}; mkdir -p "$H/exec_traj"
+    task=${2:?usage: mh.sh traj <task> | complete <filename>}; mkdir -p "$H/exec_traj"
+    if [ "$task" = complete ]; then
+      name=${3:-}
+      case "$name" in ''|*/*|*\\*|.*) echo "mh.sh traj complete: pass a trajectory basename" >&2; exit 2;; esac
+      [ $# -eq 3 ] && [ -f "$H/exec_traj/$name" ] && [ ! -L "$H/exec_traj/$name" ] || { echo "mh.sh traj complete: record missing or invalid" >&2; exit 2; }
+      case "$name" in *.md) ;; *) echo "mh.sh traj complete: expected .md record" >&2; exit 2;; esac
+      mkdir -p "$H/state/trajectories" || exit 1
+      receipt="$H/state/trajectories/$name.sha256"; digest=$(hash_of "$H/exec_traj/$name") || exit 1
+      [ -n "$digest" ] || exit 1
+      if [ -f "$receipt" ]; then
+        [ "$(cat "$receipt")" = "$digest" ] || { echo "mh.sh traj: completed record changed; preserve it and record a correction in a new trajectory" >&2; exit 1; }
+      else
+        ( set -C; printf '%s\n' "$digest" > "$receipt" ) || exit 1
+      fi
+      echo "completed $name (sealed; do not edit)"; exit 0
+    fi
+    case "$task" in update|debug|refactor|query|check|exec|pr|init|loop) ;; *) echo "mh.sh traj: unknown task '$task'" >&2; exit 2;; esac
+    [ $# -eq 2 ] || exit 2
+    # Repo state at run start — the shared-repo line (harness.md §4): what other sessions left, before this run touches anything.
+    dirty=$(git -C "$ROOT" status --short 2>/dev/null | wc -l | tr -d ' '); head=$(git -C "$ROOT" log -1 --format='%h %ci' 2>/dev/null | cut -c1-24)
+    rs="repo state: ${dirty:-?} dirty files · head ${head:-none} · $(in_flight_count) pending trajectories (stamped $(date '+%H:%M'))"
     for _ in 1 2 3 4 5; do
       f="$H/exec_traj/$(date '+%Y-%m-%d_%H%M%S')_${task}_$(printf '%04x' $((RANDOM % 65536))).md"
       if ( set -C; : > "$f" ) 2>/dev/null; then
         # Write the schema skeleton so the agent fills blanks instead of reading exec_traj.md.
         { printf '<!-- fill from what the run already holds — effect, not narration; keep `unknown` where unresolved; delete this line -->\n'
           if [ -f "$H/exec_traj.md" ]; then sed -n '/^```md$/,/^```$/p' "$H/exec_traj.md" | sed '1d;$d'
-          else printf '# <task> · <YYYY-MM-DD HH:MM> · <platform> · <main model>\nrequest:\noutcome:\nnative path:\nmemory consulted:\nsubagents:\nadvisory:\nadvisor decisions (main agent):\nchanged:\nverification:\nuser choices:\nharness effect:\n- helped:\n- hurt:\n- neutral:\nfriction:\n'; fi
-        } | sed "1,2s/^# <task> · <YYYY-MM-DD HH:MM>/# $task · $(date '+%Y-%m-%d %H:%M')/" > "$f"
+          else printf '# <task> · <YYYY-MM-DD HH:MM> · <platform> · <main model>\nrequest:\noutcome:\nnative path:\nrepo state:\nmemory consulted:\nsubagents:\nadvisory:\nadvisor decisions (main agent):\nchanged:\nverification:\nuser choices:\nharness effect:\n- helped:\n- hurt:\n- neutral:\nfriction:\n'; fi
+        } | sed "1,2s/^# <task> · <YYYY-MM-DD HH:MM>/# $task · $(date '+%Y-%m-%d %H:%M')/" | sed "s|^repo state:.*|$rs|" > "$f"
         printf '%s\n' "$f"; exit 0
       fi
     done; echo "mini-harness: could not create a unique trajectory file" >&2; exit 1;;
-  *) echo "usage: mh.sh on | off | status | doctor | traj <task> | effort <level|reset|save|restore> [researcher=<level>] [claude-model=<id>] [codex-model=<id>] | subagents [status] | subagents on [model=<id>] [effort=<level>] … | subagents off" >&2; exit 2;;
+  fingerprint)
+    shift; [ $# -gt 0 ] || { echo "usage: mh.sh fingerprint <repo-relative file> ..." >&2; exit 2; }
+    for p in "$@"; do
+      case "$p" in ''|/*|*\\*|..|../*|*/../*|*/..|*:*) echo "mh.sh fingerprint: expected repo-relative file: $p" >&2; exit 2;; esac
+      if [ -f "$ROOT/$p" ]; then digest=$(hash_of "$ROOT/$p") || exit 1; printf '%s  %s\n' "$digest" "$p"
+      elif [ -e "$ROOT/$p" ] || [ -L "$ROOT/$p" ]; then echo "mh.sh fingerprint: not a readable regular file: $p" >&2; exit 2
+      else printf 'missing  %s\n' "$p"; fi
+    done; exit 0;;
+  *) echo "usage: mh.sh on | off | status | doctor | traj <task> | traj complete <filename> | note <file|untaken> \"<line>\" | untaken [n] | fingerprint <files...> | wiki begin | wiki end <owner> | effort <level|keep|reset|save|restore|init-save|init-restore <owner>|init-keep <owner>> [researcher=<level>] [claude-model=<id>] [codex-model=<id>] | subagents [status|on ...|off]" >&2; exit 2;;
 esac

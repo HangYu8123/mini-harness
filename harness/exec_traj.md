@@ -1,20 +1,21 @@
 # Execution trajectory — one file per tagged run
 
-`exec_traj/<YYYY-MM-DD_HHMMSS>_<task>_<id>.md` — `mh.sh traj <task>` creates it (seconds plus a random 4-hex id, `set -C` so an existing name fails instead of being overwritten; two runs in the same minute, or concurrent sessions, never collide). Written at the record step from what the run already holds. It is the raw layer of the harness's own memory (WikiSkill, arXiv:2608.27454: raw traces → wiki → validated skill changes). Record **effect, not narration** — what changed the outcome, not everything that happened. Executors never read these files or the wiki at the start of a run (the paper's ablation: executor access to the wiki lowered accuracy 63.7 → 60.9; proposer access raised it 48.7 → 63.7).
+`exec_traj/<YYYY-MM-DD_HHMMSS>_<task>_<id>.md` — `mh.sh traj <task>` reserves a unique file with `set -C`. Create it once at run start and retain its path; fill it at the record step. `mh.sh traj complete <filename>` stores a content-hash receipt in `state/trajectories/`; only sealed, unchanged records enter wiki batches. Header edits and age never imply completion. It is the raw layer of the harness's own memory (WikiSkill, arXiv:2608.27454: raw traces → wiki → validated skill changes). Record **effect, not narration** — what changed the outcome, not everything that happened. Executors never read prior trajectories or the wiki at run start.
 
 ```md
 # <task> · <YYYY-MM-DD HH:MM> · <platform> · <main model>
 request: <one sentence, the user's words>
 outcome: achieved | partial | not achieved — <≤ 12 words>
 native path: <plan mode | direct | delegated to <native subagents>> · <n> tool calls · <n> edits
+repo state: <stamped by mh.sh traj: dirty files · head · pending trajectories — append fingerprint changes, if any>
 memory consulted: <file — why it was worth it | preference.md only | none>
 subagents: <one entry per invocation below | none>
 - <invocation id> · role <type> · origin <mini-harness | native> · stage/task <scope> · attempt <n>
   requested: model <id | inherit | default> · effort <level | inherit | default>
-  effective: model <resolved id | unknown> · effort <resolved level | unknown> · evidence <launch/runtime metadata or applicable configuration | unavailable>
+  effective: model <resolved id | unknown> · effort <resolved level | unknown> · evidence <definition pin (the default for a by-type spawn) | launch/runtime metadata | unavailable>
   result: <completed | failed | blocked | cancelled | launch-failed> · contribution <used | partial | unused | unknown> — <reason / verification evidence>
   usage: elapsed <seconds | unknown> · tokens <reported count | unknown>
-advisory: ran | partial | skipped — <why> · gate: large | small local-only | small non-local | forced by dials
+advisory: ran | partial | skipped — <why> · gate: large | small | forced by dials · researcher: ran | late — applied to <part> | not needed (local-only) | failed — <why>
 - online-researcher [<invocation ids>]: <m> items · adopted <n> — <what changed because of it | nothing>
 - diversifier [<invocation ids>]: <m> alternatives · adopt <a> / adopt-part <b> / same <s> / park <p> / reject <r> — <…>
 - devils-advocate [<invocation ids>]: <m> findings · adopted <n> · grill answered <k>/<q> — <…>
@@ -29,6 +30,8 @@ harness effect:
 - neutral: <component>
 friction: <stage — problem → smallest fix> | none
 ```
+
+Recovery: unsealed legacy or abandoned records block the cursor. After establishing that their writer has stopped, read them as written, note unresolved outcomes, and run `traj complete <filename>`; never infer abandonment from age. Sealed records are immutable; put corrections in a new record. If a sealed record changes accidentally, restore its sealed content before consolidation.
 
 Record every subagent invocation, including native delegates, init/loop workers, and failed/retried launches, using metadata already available. A follow-up on the same agent stays in its entry unless settings change. Requested settings, `inherit`, and prompt-only effort lines do not prove effective settings: preserve `unknown` when unresolved and never infer older records from today's defaults. Do not launch extra agents or fetch unavailable telemetry merely for recording. Advisor dispositions are made by the main agent and saved here without a human approval step; show them in chat only on request or when a material consequence needs explanation.
 

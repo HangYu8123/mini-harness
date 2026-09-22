@@ -106,7 +106,7 @@ class SubagentControlTests(unittest.TestCase):
             self.assertEqual(self.front(name)["model"], '"haiku"')
             self.assertEqual(self.front(name)["effort"], "max")
         self.assertEqual(self.toml("implementer.toml")["model_reasoning_effort"], "max")
-        self.assertNotIn("model", self.toml("implementer.toml"))   # a Claude alias never reaches the Codex definitions
+        self.assertEqual(self.toml("implementer.toml")["model"], "gpt-5.6-sol")   # a Claude alias never reaches the Codex definitions
         self.assertEqual(self.front("mine.md"),
                          {"name": "mine", "description": "user agent", "model": "opus", "effort": "high"})
         self.assert_manifest_matches_files()
@@ -123,9 +123,9 @@ class SubagentControlTests(unittest.TestCase):
         manifest = self.repo / ".harness/installed.tsv"
         manifest_before = manifest.read_bytes()
         claude = self.repo / ".claude/agents/verifier.md"
-        claude.write_text(claude.read_text().replace('model: "inherit"', 'model: "opus"').replace("effort: low", "effort: high"))
+        claude.write_text(claude.read_text().replace('model: "sonnet"', 'model: "opus"').replace("effort: medium", "effort: high"))
         codex = self.repo / ".codex/agents/broad-analyst.toml"
-        codex.write_text(codex.read_text().replace('model_reasoning_effort = "low"', 'model = "gpt-5.6-sol"\nmodel_reasoning_effort = "medium"'))
+        codex.write_text(codex.read_text().replace('model = "gpt-5.6-sol"\nmodel_reasoning_effort = "medium"', 'model = "gpt-6-astra"\nmodel_reasoning_effort = "low"'))
         codex.write_text(codex.read_text().replace("developer_instructions = '''", "developer_instructions = '''\nExample config:\nmodel = \"example\"\nmodel_reasoning_effort = \"low\"\n"))
         before = self.snapshot()
         self.mh("subagents", "on", "claude-model=haiku", "codex-model=gpt-5.6-luna", "effort=max")
@@ -171,8 +171,8 @@ class SubagentControlTests(unittest.TestCase):
         self.mh("subagents", "on", "model=sonnet")
         self.assertEqual(self.state.read_text().splitlines()[1:], ["claude_model=sonnet"])
         self.assertEqual(self.front("implementer.md")["model"], '"sonnet"')
-        self.assertEqual(self.front("implementer.md")["effort"], "low")   # the first run's effort is gone with its state
-        self.assertNotIn("model", self.toml("implementer.toml"))
+        self.assertEqual(self.front("implementer.md")["effort"], "medium")   # the first run's effort is gone with its state
+        self.assertEqual(self.toml("implementer.toml")["model"], "gpt-5.6-sol")   # back to the shipped default
         self.mh("subagents", "off")
         self.assertEqual(before, self.snapshot())
 

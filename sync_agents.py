@@ -14,10 +14,10 @@ The shared working rules every subagent must follow are injected here (PREAMBLE)
 so a subagent reads no contract file at spawn time. Source files stay role-only.
 
 Usage (from the pack root):
-    python3 sync_agents.py                       # use each source file's own effort, model inherit
+    python3 sync_agents.py                       # shipped defaults: sonnet (Claude Code) · gpt-5.6-sol (Codex), each source's own effort
     python3 sync_agents.py --claude-model claude-sonnet-4-6 --codex-model gpt-5.6-luna --effort max
     python3 sync_agents.py --claude-model claude-sonnet-5 --effort medium --researcher-effort high
-    python3 sync_agents.py --model inherit       # reset both platforms to inherit (the default)
+    python3 sync_agents.py --model inherit       # both platforms follow the session model
 
 ``--claude-model`` writes only agents/*.md, ``--codex-model`` only .codex/agents/*.toml;
 ``--model`` sets both (a platform flag wins over it). These flags set the shipped defaults;
@@ -48,6 +48,7 @@ CLAUDE_TOOLS = {
 }
 WRITE_TOOLS = {"edit", "execute"}
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+DEFAULT_MODEL = {"claude": "sonnet", "codex": "gpt-5.6-sol"}   # shipped defaults; mh.sh `effort reset` mirrors them
 CODEX_EFFORT = {"low": "low", "medium": "medium", "high": "high", "xhigh": "xhigh", "max": "max"}
 
 PREAMBLE = """
@@ -62,6 +63,7 @@ PREAMBLE = """
 - Stay in scope; do not improve adjacent code. You are a leaf: spawn no subagents unless your prompt explicitly makes you a nested main agent.
 - A new source file you create opens with the provenance header (`.harness/philosophy.md`): one or two past-tense sentences on the originating request, `Original request:` on its own line.
 - Return your result directly under the output label your prompt names, with no header block. If you cannot finish, return `status: blocked — <reason>` instead of a degraded answer.
+- Your return stays in the main agent's context for the rest of its session and is re-sent on every later call: keep it under about 60 lines (≈ 1,500 tokens) — one line per finding, item, or plan step, evidence as `file:line` or a URL, no restatement of the task, no introduction, no closing summary. Anything longer goes under one final `details on request:` line naming what you hold.
 """.strip("\n")
 
 
@@ -176,7 +178,7 @@ def prune_stale(directory, keep, suffix, removed):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--model", help="model for both platforms (default: inherit); prefer platform-specific flags for provider IDs")
+    ap.add_argument("--model", help="model for both platforms (default: sonnet · gpt-5.6-sol); prefer platform-specific flags for provider IDs")
     ap.add_argument("--claude-model", help="model for the Claude Code definitions only (overrides --model)")
     ap.add_argument("--codex-model", help="model for the Codex definitions only (overrides --model)")
     ap.add_argument("--effort", choices=EFFORTS, help="effort for every worker except the online researcher")
@@ -188,8 +190,8 @@ def main():
         selected.add("claude")
     if both or args.codex_model is not None:
         selected.add("codex")
-    claude_model = args.claude_model or args.model or "inherit"
-    codex_model = args.codex_model or args.model or "inherit"
+    claude_model = args.claude_model or args.model or DEFAULT_MODEL["claude"]
+    codex_model = args.codex_model or args.model or DEFAULT_MODEL["codex"]
     for platform, model in (("claude", claude_model), ("codex", codex_model)):
         if platform in selected:
             validate_model(model, platform)

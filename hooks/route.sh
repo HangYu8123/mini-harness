@@ -48,7 +48,21 @@ if [ "$event" = PreToolUse ]; then
   # Claude Code: an Agent call that names no model gets the user's alias (the per-spawn parameter takes aliases only).
   # updatedInput replaces the whole input, so every other field passes through unchanged; no permissionDecision —
   # the platform's own permission flow still decides. Leave forks and resumed agents alone.
-  m=$(sval claude_model); case "$m" in opus|sonnet|haiku|fable) ;; *) exit 0;; esac
+  m=$(sval claude_model); case "$m" in opus|sonnet|haiku|fable) ;; *) m="";; esac
+  if [ -z "$m" ] && [ -f "$root/.harness/state/active" ]; then
+    # Protocol on: a mini-harness worker spawned by type gets its own definition's model pin (aliases only), so an
+    # advisor never silently runs on the main model — 46 of the first 49 advisor spawns did, through `model: inherit`.
+    if command -v jq >/dev/null 2>&1; then st=$(printf '%s' "$payload" | jq -r '.tool_input.subagent_type // empty' 2>/dev/null)
+    elif command -v python3 >/dev/null 2>&1; then st=$(printf '%s' "$payload" | python3 -c 'import json,sys; d=json.load(sys.stdin); print((d.get("tool_input") or {}).get("subagent_type") or "")' 2>/dev/null)
+    else st=""; fi
+    st=${st#mini-harness:}
+    for dir in "$root/.claude/agents" "${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/agents}"; do
+      [ -n "$dir" ] && [ -n "$st" ] && [ -f "$dir/$st.md" ] || continue
+      m=$(awk '/^---$/{fm++; next} fm==1{print}' "$dir/$st.md" | sed -n 's/^model: *"\{0,1\}\([a-z]*\)"\{0,1\} *$/\1/p' | head -n1); break
+    done
+    case "$m" in opus|sonnet|haiku|fable) ;; *) exit 0;; esac
+  fi
+  [ -n "$m" ] || exit 0
   if command -v jq >/dev/null 2>&1; then
     printf '%s' "$payload" | jq -c --arg m "$m" 'select((.tool_name=="Agent" or .tool_name=="Task") and ((.tool_input.model // "")=="") and .tool_input.subagent_type!="fork" and ((.tool_input.resume // "")==""))
       | {hookSpecificOutput:{hookEventName:"PreToolUse",updatedInput:(.tool_input+{model:$m})}}' 2>/dev/null

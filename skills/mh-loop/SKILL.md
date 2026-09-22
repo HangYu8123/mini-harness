@@ -12,7 +12,7 @@ Read `.harness/harness.md` once per session, then `.harness/loop_control.md` (pr
 
 ## Contract
 - **Inputs:** goal (required, one concrete sentence with a term or quantity) · success criteria + exit conditions (required) · loop body (optional: a free-form action, or `dispatch update|debug|exec|refactor` — one request under the entry protocol with that task tag per pass; else decide it from the goal) · starting state (optional; default: current workspace).
-- **Headers (inline, defaults):** `max_iterations: 10` · `no_progress_k: 3` · `strategy: stable_advancing | aggressive | fast_iteration` · `exit_gater: on | off` · dials as in §11 (a loop is always large, so `auto` spawns all three).
+- **Headers (inline, defaults):** `max_iterations: 10` · `no_progress_k: 3` · `strategy: stable_advancing | aggressive | fast_iteration` · `exit_gater: on | off` · dials as in §11 (a loop enables the two fast advisors; research at `auto` requires external facts to verify).
 - **Produces:** [loop spec] → [spec critique] · [research + verifier validation] (per dials) → scratch state (ledger + re-entry prompt) → per pass [pass report] → ledger entry → [final report] → update_logs line → trajectory.
 - **Done when:** an exit condition fired and the exit check agrees (the `max_iterations` cap and an unrecoverable blocker stop unconditionally); a cap stop is a **stop, never goal-met**.
 
@@ -27,11 +27,11 @@ Read the named files (and `persistent_issues.md` §Refuted directions for a cont
 - **pass** (one line: what one pass does and what it reports back) · **resources** the body uses exclusively (worktree, devices, ports; `none` allowed) · **body** (given, or decided now with a one-line rationale) · **strategy** copied verbatim.
 
 ### 2 · Validate  `[PARALLEL]` — the advisory pass for a loop
-Guardrail checklist: goal concrete · every criterion has a tool verifier · baseline captured · metric un-game-able · predicates boolean · body fits the goal · strategy fits the risk profile · verifier calibrated · resources declared. Advisors per their dials, in one background batch, bounded by the advisory budget:
+Guardrail checklist: goal concrete · every criterion has a tool verifier · baseline captured · metric un-game-able · predicates boolean · body fits the goal · strategy fits the risk profile · verifier calibrated · resources declared. Enabled advisors run in one background batch with the separate advisory/research budgets and evidence boundaries from harness.md §5:
 | Spawn | Dial · default | Task |
 |---|---|---|
 | **devils-advocate** | `devils_advocate=on` | Digest + [loop spec]. What makes this loop run forever or stop early; is the metric meaningful and un-game-able; are caps and baseline sane; flag destructive actions for a checkpoint → **[spec critique]**. |
-| **online-researcher** | `online_research=on` | Digest + [loop spec]. Are the chosen checks the standard, robust way to verify these criteria; pitfalls; stronger verifiers; references for the body → **[research + verifier validation]** with URLs. |
+| **online-researcher** | `online_research=auto` (externality) | Digest + [loop spec] + named external facts to verify. Check those facts and their implications for the criteria/verifiers → **[research + verifier validation]** with URLs. Local-only loops skip this advisor unless explicitly forced on. |
 | **diversifier** | `diversifier=on` | Goal + invariants + context, without the proposed spec/body: alternative verification and search strategies → **[diverse plans]**. |
 The main agent folds returned items into the final **[loop spec]** and records dispositions in the trajectory, without asking the user to adjudicate. Resolve guardrail failures autonomously when possible; ask only when required information or native permission is missing. Reuse an advisory pass already completed for this request.
 
@@ -56,7 +56,7 @@ For N = 1, 2, …:
 Summarize from the ledger: goal met · which exit fired · net files changed · metric trajectory (baseline → final) · noteworthy · refuted. Only if some pass edited source: per dials run `simplify` / `code_review` (harness.md §11) on the net diff + spec + ledger; meanwhile write **[direct review]**. Reconcile, apply low-risk findings → **[final report]**.
 
 ### 6 · Record — harness.md §8, nothing special
-If repo state changed, refresh the overviews only where the loop made them wrong. `update_logs.md` line: `- <YYYY-MM-DD> · loop · <goal in one sentence> · files: <net files> · functions: <net functions>` (`none` when nothing changed). Refuted hypotheses (numbers + artifact paths) → `persistent_issues.md` under `## Refuted directions`. `mh.sh traj loop` → fill the skeleton it writes: `native path` = passes run and the exit reason, metric trajectory baseline → final, advisors (spec critique, researcher, diversifier) and the exit-gater with items → adopted, harness effect. Then the wiki cadence (§8.6).
+If repo state changed, refresh the overviews only where the loop made them wrong. `update_logs.md` line: `- <YYYY-MM-DD> · loop · <goal in one sentence> · files: <net files> · functions: <net functions>` (`none` when nothing changed). Refuted hypotheses (numbers + artifact paths) → `persistent_issues.md` under `## Refuted directions`. Fill the trajectory created at run start: `native path` = passes run and the exit reason, metric trajectory baseline → final, advisors and exit-gater with items → adopted, harness effect. Seal with `mh.sh traj complete <filename>`. Consolidation remains on request (§8.6).
 
 ### 7 · Report
 Final message in the i-have-adhd shape: passes, exit reason, net changes, trajectory, achieved; `Next:` = the verifier command. Keep operational status in the record; no routine task tag or footer.
