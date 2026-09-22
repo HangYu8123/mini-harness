@@ -1,0 +1,1 @@
+1. add a Jev like small model to do the advisor selection ( install by using a skill)
